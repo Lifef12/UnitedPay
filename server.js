@@ -18,11 +18,11 @@ mongoose.connect(MONGO_URI)
 const userSchema = new mongoose.Schema({
     id: { type: String, required: true, unique: true },
     username: { type: String, default: 'User' },
-    balance: { type: Number, default: 0 },          // Withdrawable Balance ($ USDT)
-    rechargePool: { type: Number, default: 0 },     // Recharge Amount Pool ($ USDT)
+    balance: { type: Number, default: 0 },
+    rechargePool: { type: Number, default: 0 },
     totalRecharge: { type: Number, default: 0 },
     totalWithdrawn: { type: Number, default: 0 },
-    unlockedPlans: { type: Array, default: [1] },     // Default VIP-1 unlocked
+    unlockedPlans: { type: Array, default: [1] },
     deposits: { type: Array, default: [] },
     withdrawals: { type: Array, default: [] },
     isBanned: { type: Boolean, default: false },
@@ -42,7 +42,7 @@ const User = mongoose.model('User', userSchema);
 
 const pendingRequestSchema = new mongoose.Schema({
     reqId: { type: String, required: true, unique: true },
-    type: { type: String, required: true }, // 'deposit' or 'withdraw'
+    type: { type: String, required: true },
     userId: { type: String, required: true },
     amount: { type: Number, required: true },
     txHash: { type: String },
@@ -54,7 +54,6 @@ const PendingRequest = mongoose.model('PendingRequest', pendingRequestSchema);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Manual CORS headers middleware
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
@@ -85,7 +84,6 @@ function checkAdminAuth(req, res, next) {
     return res.redirect('/admin/login');
 }
 
-// ================== TELEGRAM HELPERS ==================
 async function sendTelegramMessage(chatId, text, replyMarkup = null) {
     try {
         let body = { chat_id: chatId, text: text, parse_mode: 'Markdown' };
@@ -140,7 +138,6 @@ async function answerCallbackQuery(callbackQueryId, text) {
     }
 }
 
-// Referral Commission distributor (11% - 2% - 1%)
 async function payReferralCommissions(depositUser, usdtAmount) {
     const rates = [0.11, 0.02, 0.01];
     let current = depositUser;
@@ -213,7 +210,7 @@ async function rejectRequest(reqDoc, u, reqId) {
         await u.save();
         sendTelegramMessage(reqDoc.userId, `❌ Your deposit request of $${reqDoc.amount} USDT was declined.`);
     } else if (reqDoc.type === 'withdraw' && u) {
-        u.balance += Number(reqDoc.amount); // Refund balance
+        u.balance += Number(reqDoc.amount);
         if (u.withdrawals && u.withdrawals.length > 0) {
             let wItem = u.withdrawals.find(w => String(w.id) === String(reqId));
             if (wItem) wItem.status = 'Rejected';
@@ -224,7 +221,6 @@ async function rejectRequest(reqDoc, u, reqId) {
     }
 }
 
-// ================== TELEGRAM WEBHOOK ==================
 async function handleWebhookLogic(req, res) {
     const update = req.body;
     res.sendStatus(200);
@@ -316,7 +312,6 @@ async function handleWebhookLogic(req, res) {
 
 app.post(`/api/webhook/${BOT_TOKEN}`, handleWebhookLogic);
 
-// ================== MINI APP API ENDPOINTS ==================
 app.get('/api/user/:userId', async (req, res) => {
     const userId = String(req.params.userId);
     let user = await User.findOne({ id: userId });
@@ -423,7 +418,6 @@ app.post('/api/withdraw', async (req, res) => {
     res.json({ success: true, message: "Withdrawal requested successfully", newBalance: u.balance });
 });
 
-// ================== ADMIN DASHBOARD ROUTES ==================
 app.get('/admin/login', (req, res) => {
     res.send(`
         <!DOCTYPE html>
