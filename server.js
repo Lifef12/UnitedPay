@@ -10,21 +10,6 @@ const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb:/
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "nbx12345";
 
-// ================== MINING & VIP RULES ==================
-const PLAN_DURATION_MS = 365 * 24 * 60 * 60 * 1000; // Valid for 365 days
-
-let bnbPriceCache = { price: 620, time: 0 };
-async function getBnbPrice() {
-    if (Date.now() - bnbPriceCache.time < 60000) return bnbPriceCache.price;
-    try {
-        const r = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT');
-        const d = await r.json();
-        const p = parseFloat(d.price);
-        if (p > 0) { bnbPriceCache = { price: p, time: Date.now() }; return p; }
-    } catch (e) {}
-    return bnbPriceCache.price;
-}
-
 // ================== DATABASE ==================
 mongoose.connect(MONGO_URI)
     .then(() => console.log('✅ Connected to MongoDB Successfully!'))
@@ -34,7 +19,7 @@ const userSchema = new mongoose.Schema({
     id: { type: String, required: true, unique: true },
     username: { type: String, default: 'User' },
     balance: { type: Number, default: 0 },          // Withdrawable Balance ($ USDT)
-    rechargePool: { type: Number, default: 0 },     // Recharge Amount Pool ($ USDT)
+    rechargePool: { type: Number, default: 0 },     // Recharge Pool ($ USDT)
     totalRecharge: { type: Number, default: 0 },
     totalWithdrawn: { type: Number, default: 0 },
     unlockedPlans: { type: Array, default: [1] },     // Default VIP-1 unlocked
@@ -197,14 +182,10 @@ async function approveRequest(reqDoc, u, reqId) {
         u.rechargePool += depAmount;
         u.totalRecharge += depAmount;
         
-        u.deposits.unshift({
-            id: reqId,
-            type: 'Recharge',
-            amount: depAmount,
-            date: new Date().toLocaleString(),
-            status: 'Approved',
-            txHash: reqDoc.txHash
-        });
+        if (u.deposits && u.deposits.length > 0) {
+            let dItem = u.deposits.find(d => String(d.id) === String(reqId));
+            if (dItem) dItem.status = 'Approved';
+        }
         u.markModified('deposits');
         await u.save();
 
@@ -212,14 +193,10 @@ async function approveRequest(reqDoc, u, reqId) {
         sendTelegramMessage(reqDoc.userId, `✅ Your deposit of $${depAmount} USDT has been approved and added to your recharge pool!`);
     } else if (reqDoc.type === 'withdraw' && u) {
         u.totalWithdrawn = Number(u.totalWithdrawn || 0) + Number(reqDoc.amount);
-        u.withdrawals.unshift({
-            id: reqId,
-            type: 'Withdrawal',
-            amount: -Number(reqDoc.amount),
-            date: new Date().toLocaleString(),
-            status: 'Approved',
-            address: reqDoc.address
-        });
+        if (u.withdrawals && u.withdrawals.length > 0) {
+            let wItem = u.withdrawals.find(w => String(w.id) === String(reqId));
+            if (wItem) wItem.status = 'Approved';
+        }
         u.markModified('withdrawals');
         await u.save();
         sendTelegramMessage(reqDoc.userId, `✅ Your withdrawal of $${reqDoc.amount} USDT has been approved!`);
@@ -228,27 +205,19 @@ async function approveRequest(reqDoc, u, reqId) {
 
 async function rejectRequest(reqDoc, u, reqId) {
     if (reqDoc.type === 'deposit' && u) {
-        u.deposits.unshift({
-            id: reqId,
-            type: 'Recharge',
-            amount: reqDoc.amount,
-            date: new Date().toLocaleString(),
-            status: 'Rejected',
-            txHash: reqDoc.txHash
-        });
+        if (u.deposits && u.deposits.length > 0) {
+            let dItem = u.deposits.find(d => String(d.id) === String(reqId));
+            if (dItem) dItem.status = 'Rejected';
+        }
         u.markModified('deposits');
         await u.save();
         sendTelegramMessage(reqDoc.userId, `❌ Your deposit request of $${reqDoc.amount} USDT was declined.`);
     } else if (reqDoc.type === 'withdraw' && u) {
         u.balance += Number(reqDoc.amount); // Refund balance
-        u.withdrawals.unshift({
-            id: reqId,
-            type: 'Withdrawal',
-            amount: -Number(reqDoc.amount),
-            date: new Date().toLocaleString(),
-            status: 'Rejected',
-            address: reqDoc.address
-        });
+        if (u.withdrawals && u.withdrawals.length > 0) {
+            let wItem = u.withdrawals.find(w => String(w.id) === String(reqId));
+            if (wItem) wItem.status = 'Rejected';
+        }
         u.markModified('withdrawals');
         await u.save();
         sendTelegramMessage(reqDoc.userId, `❌ Your withdrawal request was declined and funds refunded to your balance.`);
@@ -370,6 +339,18 @@ app.post('/api/deposit', async (req, res) => {
     if (!u) u = new User({ id: userId });
 
     const reqId = 'dep_' + Date.now();
+    
+    u.deposits.unshift({
+        id: reqId,
+        type: 'Recharge',
+        amount: parseFloat(amount),
+        date: new Date().toLocaleString(),
+        status: 'Pending',
+        txHash: String(txHash).trim()
+    });
+    u.markModified('deposits');
+    await u.save();
+
     await PendingRequest.create({
         reqId,
         type: 'deposit',
@@ -406,9 +387,19 @@ app.post('/api/withdraw', async (req, res) => {
     }
 
     u.balance -= amt;
-    await u.save();
 
     const reqId = 'wd_' + Date.now();
+    u.withdrawals.unshift({
+        id: reqId,
+        type: 'Withdrawal',
+        amount: -amt,
+        date: new Date().toLocaleString(),
+        status: 'Pending',
+        address: address
+    });
+    u.markModified('withdrawals');
+    await u.save();
+
     await PendingRequest.create({
         reqId,
         type: 'withdraw',
@@ -437,14 +428,25 @@ app.get('/admin/login', (req, res) => {
     res.send(`
         <!DOCTYPE html>
         <html>
-        <head><title>Admin Login</title><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-        <body style="background:#0c0a09;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;font-family:sans-serif;">
-            <div style="background:#1c1917;padding:30px;border-radius:16px;width:320px;text-align:center;border:1px solid #292524;">
-                <h2 style="color:#38bdf8;">🔐 Admin Login</h2>
+        <head>
+            <title>Admin Login - UnitedPay</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+                body { background: #0c0a09; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+                .login-card { background: #1c1917; border: 1px solid #292524; padding: 30px; border-radius: 16px; width: 90%; max-width: 360px; text-align: center; }
+                h2 { color: #f5b83d; margin-bottom: 20px; }
+                input { width: 100%; padding: 12px; margin-bottom: 12px; background: #0c0a09; border: 1px solid #44403c; color: #fff; border-radius: 8px; }
+                button { width: 100%; padding: 12px; background: #f5b83d; color: #000; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
+            </style>
+        </head>
+        <body>
+            <div class="login-card">
+                <h2>👑 Admin Login</h2>
                 <form action="/admin/login" method="POST">
-                    <input type="text" name="username" placeholder="Username" required style="width:100%;padding:10px;margin-bottom:10px;background:#0c0a09;border:1px solid #444;color:#fff;border-radius:6px;">
-                    <input type="password" name="password" placeholder="Password" required style="width:100%;padding:10px;margin-bottom:10px;background:#0c0a09;border:1px solid #444;color:#fff;border-radius:6px;">
-                    <button type="submit" style="width:100%;padding:10px;background:#38bdf8;border:none;font-weight:bold;border-radius:6px;cursor:pointer;">Login</button>
+                    <input type="text" name="username" placeholder="Username" required>
+                    <input type="password" name="password" placeholder="Password" required>
+                    <button type="submit">Login</button>
                 </form>
             </div>
         </body>
@@ -463,32 +465,212 @@ app.post('/admin/login', (req, res) => {
     res.send(`<script>alert('Invalid Credentials!');location.href='/admin/login';</script>`);
 });
 
+app.get('/admin/logout', (req, res) => {
+    const sessionToken = req.cookies.admin_session;
+    if (sessionToken) activeSessions.delete(sessionToken);
+    res.setHeader('Set-Cookie', 'admin_session=; Path=/; HttpOnly; Max-Age=0');
+    res.redirect('/admin/login');
+});
+
 app.get('/admin/dashboard', checkAdminAuth, async (req, res) => {
     const requests = await PendingRequest.find({});
     const totalUsers = await User.countDocuments();
-    
-    res.send(`
+    const allUsers = await User.find({});
+
+    let totalUsersBalance = 0;
+    let totalPaidOutUsdt = 0;
+    let verifiedUsersCount = 0;
+
+    allUsers.forEach(u => {
+        totalUsersBalance += Number(u.balance || 0) + Number(u.rechargePool || 0);
+        if (u.totalRecharge > 0) verifiedUsersCount++;
+        if (u.withdrawals) {
+            u.withdrawals.forEach(w => {
+                if (w.status === 'Approved') totalPaidOutUsdt += Math.abs(Number(w.amount || 0));
+            });
+        }
+    });
+
+    let searchId = req.query.search ? req.query.search.trim() : '';
+    let searchedUser = null;
+    if (searchId) {
+        searchedUser = await User.findOne({
+            $or: [{ id: searchId }, { username: searchId.replace('@', '') }]
+        });
+    }
+
+    let html = `
         <!DOCTYPE html>
         <html>
-        <head><title>Admin Dashboard - UnitedPay</title><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-        <body style="background:#0c0a09;color:#fff;padding:20px;font-family:sans-serif;">
-            <h1 style="color:#38bdf8;">👑 UnitedPay Admin Panel</h1>
-            <p>Total Registered Users: <b>${totalUsers}</b></p>
-            <h3>⏳ Pending User Requests (${requests.length})</h3>
-            ${requests.length === 0 ? '<p>No pending requests.</p>' : `
-                <table border="1" style="border-collapse:collapse;width:100%;text-align:left;border-color:#333;">
-                    <tr><th>Type</th><th>User ID</th><th>Amount</th><th>Details</th></tr>
-                    ${requests.map(r => `<tr>
-                        <td><b>${r.type.toUpperCase()}</b></td>
-                        <td>${r.userId}</td>
-                        <td>$${r.amount}</td>
-                        <td>${r.txHash || r.address}</td>
-                    </tr>`).join('')}
-                </table>
-            `}
+        <head>
+            <title>UnitedPay Admin Panel</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+                body { background: #0c0a09; color: #f3f4f6; margin: 0; padding: 16px; }
+                .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+                .header h1 { color: #f5b83d; margin: 0; font-size: 20px; }
+                .logout-btn { background: #ef4444; color: #fff; padding: 6px 14px; border-radius: 8px; text-decoration: none; font-size: 12px; font-weight: bold; }
+                .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
+                .stat-card { background: #1c1917; border: 1px solid #292524; border-radius: 14px; padding: 14px; text-align: left; }
+                .stat-title { font-size: 10px; color: #a8a29e; text-transform: uppercase; font-weight: bold; }
+                .stat-value { font-size: 18px; font-weight: bold; color: #f5b83d; margin-top: 6px; }
+                .card { background: #1c1917; border: 1px solid #292524; border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+                .card h3 { color: #f5b83d; margin-top: 0; font-size: 14px; border-bottom: 1px solid #292524; padding-bottom: 8px; }
+                .search-box { display: flex; gap: 8px; margin-bottom: 10px; }
+                input, textarea { background: #0c0a09; border: 1px solid #44403c; color: #fff; padding: 10px; border-radius: 8px; width: 100%; font-size: 13px; }
+                .btn { background: #f5b83d; color: #000; border: none; font-weight: bold; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+                .btn-green { background: #22c55e; color: #fff; }
+                .btn-red { background: #ef4444; color: #fff; }
+                table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+                th, td { padding: 8px; text-align: left; border-bottom: 1px solid #292524; font-size: 11.5px; }
+                th { color: #a8a29e; }
+                .user-details { background: #0c0a09; padding: 12px; border-radius: 8px; border: 1px solid #292524; font-size: 12px; line-height: 1.6; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>👑 UnitedPay Admin</h1>
+                <a href="/admin/logout" class="logout-btn">Logout</a>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-title">Total Users</div><div class="stat-value">${totalUsers}</div></div>
+                <div class="stat-card"><div class="stat-title">Verified Users</div><div class="stat-value">${verifiedUsersCount}</div></div>
+                <div class="stat-card"><div class="stat-title">Users' Balance</div><div class="stat-value">${totalUsersBalance.toFixed(2)} USDT</div></div>
+                <div class="stat-card"><div class="stat-title">Paid Out</div><div class="stat-value">${totalPaidOutUsdt.toFixed(2)} USDT</div></div>
+            </div>
+
+            <div class="card">
+                <h3>⏳ Pending Requests (${requests.length})</h3>
+                ${requests.length === 0 ? '<p style="font-size:12px; color:#a8a29e;">No pending requests.</p>' : `
+                    <table>
+                        <tr><th>Type</th><th>User ID</th><th>Amount</th><th>Action</th></tr>
+                        ${requests.map(r => `
+                            <tr>
+                                <td style="color:${r.type==='deposit'?'#22c55e':'#ef4444'}; font-weight:bold;">${r.type.toUpperCase()}</td>
+                                <td><code>${r.userId}</code></td>
+                                <td><b>$${r.amount}</b></td>
+                                <td>
+                                    <button class="btn btn-green" style="padding:4px 8px; font-size:10px;" onclick="handleReq('${r.reqId}', 'approve')">Approve</button>
+                                    <button class="btn btn-red" style="padding:4px 8px; font-size:10px;" onclick="handleReq('${r.reqId}', 'reject')">Reject</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                `}
+            </div>
+
+            <div class="card">
+                <h3>🔍 Search & Manage User</h3>
+                <form method="GET" action="/admin/dashboard" class="search-box">
+                    <input type="text" name="search" placeholder="Telegram ID or @username" value="${searchId}">
+                    <button type="submit" class="btn">Search</button>
+                </form>
+                ${searchedUser ? `
+                    <div class="user-details">
+                        <p>👤 <b>User:</b> ${searchedUser.username} | <b>ID:</b> <code>${searchedUser.id}</code></p>
+                        <p>💰 <b>Withdrawable Balance:</b> $${searchedUser.balance.toFixed(2)} USDT</p>
+                        <p>📥 <b>Recharge Pool:</b> $${searchedUser.rechargePool.toFixed(2)} USDT</p>
+                        <p>🔒 <b>Status:</b> ${searchedUser.isBanned ? '<span style="color:#ef4444;">BANNED</span>' : '<span style="color:#22c55e;">ACTIVE</span>'}</p>
+                        <hr style="border-color:#292524; margin:10px 0;">
+                        <b>⚙️ Quick Actions:</b>
+                        <div style="display:flex; gap:8px; margin-top:8px;">
+                            <input type="number" id="mod-amt" placeholder="Amount ($)" style="flex:1;">
+                            <button class="btn btn-green" onclick="modifyBal('${searchedUser.id}', 'add')">+ Add</button>
+                            <button class="btn btn-red" onclick="modifyBal('${searchedUser.id}', 'cut')">- Cut</button>
+                        </div>
+                    </div>
+                ` : searchId ? '<p style="color:#ef4444; font-size:12px;">User not found!</p>' : ''}
+            </div>
+
+            <div class="card">
+                <h3>📢 Broadcast</h3>
+                <textarea id="bc-msg" placeholder="Message to all users..."></textarea>
+                <button class="btn" style="margin-top:10px; width:100%;" onclick="sendBroadcast()">Send Broadcast</button>
+            </div>
+
+            <script>
+                async function handleReq(reqId, action) {
+                    let res = await fetch('/admin/action', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ reqId, action })
+                    });
+                    let data = await res.json();
+                    alert(data.message);
+                    location.reload();
+                }
+                async function modifyBal(userId, action) {
+                    let amount = document.getElementById('mod-amt').value;
+                    if(!amount) return alert("Enter amount!");
+                    let res = await fetch('/admin/manage-balance', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ userId, amount, action })
+                    });
+                    let data = await res.json();
+                    alert(data.message);
+                    location.reload();
+                }
+                async function sendBroadcast() {
+                    let message = document.getElementById('bc-msg').value;
+                    if(!message) return alert("Enter broadcast message!");
+                    let res = await fetch('/admin/broadcast', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ message })
+                    });
+                    let data = await res.json();
+                    alert(data.message);
+                }
+            </script>
         </body>
         </html>
     `);
+    res.send(html);
+});
+
+app.post('/admin/action', checkAdminAuth, async (req, res) => {
+    const { reqId, action } = req.body;
+    const reqDoc = await PendingRequest.findOneAndDelete({ reqId });
+    if (!reqDoc) return res.status(404).json({ success: false, message: "Request not found" });
+
+    const u = await User.findOne({ id: reqDoc.userId });
+    if (action === 'approve') {
+        await approveRequest(reqDoc, u, reqId);
+    } else {
+        await rejectRequest(reqDoc, u, reqId);
+    }
+    res.json({ success: true, message: "Action executed successfully!" });
+});
+
+app.post('/admin/manage-balance', checkAdminAuth, async (req, res) => {
+    const { userId, amount, action } = req.body;
+    let u = await User.findOne({ id: userId });
+    if (!u) return res.status(404).json({ success: false, message: "User not found!" });
+
+    let amt = parseFloat(amount);
+    if (action === 'add') {
+        u.balance += amt;
+        sendTelegramMessage(userId, `🎁 Admin added +$${amt} USDT to your balance!`);
+    } else {
+        u.balance = Math.max(0, u.balance - amt);
+        sendTelegramMessage(userId, `⚠️ Admin deducted -$${amt} USDT from your balance.`);
+    }
+    await u.save();
+    res.json({ success: true, message: `Successfully updated balance for user ${userId}!` });
+});
+
+app.post('/admin/broadcast', checkAdminAuth, async (req, res) => {
+    const { message } = req.body;
+    const users = await User.find({});
+    let count = 0;
+    for (let u of users) {
+        await sendTelegramMessage(u.id, message);
+        count++;
+    }
+    res.json({ success: true, message: `Broadcast sent to ${count} users successfully!` });
 });
 
 const PORT = process.env.PORT || 3000;
