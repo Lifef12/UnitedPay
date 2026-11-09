@@ -4,7 +4,6 @@ const crypto = require('crypto');
 const app = express();
 
 // ================== SETTINGS ==================
-// Ye sab Render ke Environment Variables mein set karein
 const BOT_TOKEN = process.env.BOT_TOKEN || '';
 const ADMIN_ID = process.env.ADMIN_ID || '';
 const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/unitedpay';
@@ -540,9 +539,9 @@ app.get('/admin/dashboard', checkAdminAuth, async (req, res) => {
         }
 
         // ---- Pending requests HTML ----
-        let pendingHtml;
+        let pendingHtml = '';
         if (requests.length === 0) {
-            pendingHtml = '<p style="font-size:12px; color:#a8a29e;">No pending requests.</p>';
+            pendingHtml = '<p style="font-size:12px; color:#a8a29e; margin:0;">No pending requests.</p>';
         } else {
             const rows = requests.map(r => {
                 const color = r.type === 'deposit' ? '#22c55e' : '#ef4444';
@@ -551,7 +550,7 @@ app.get('/admin/dashboard', checkAdminAuth, async (req, res) => {
                         <td style="color:${color}; font-weight:bold;">${escapeHtml(r.type.toUpperCase())}</td>
                         <td><code>${escapeHtml(r.userId)}</code></td>
                         <td><b>$${escapeHtml(r.amount)}</b></td>
-                        <td>
+                        <td style="text-align:right;">
                             <button class="btn btn-green" style="padding:4px 8px; font-size:10px;" onclick="handleReq('${escapeHtml(r.reqId)}', 'approve')">Approve</button>
                             <button class="btn btn-red" style="padding:4px 8px; font-size:10px;" onclick="handleReq('${escapeHtml(r.reqId)}', 'reject')">Reject</button>
                         </td>
@@ -559,33 +558,55 @@ app.get('/admin/dashboard', checkAdminAuth, async (req, res) => {
             }).join('');
             pendingHtml = `
                 <table>
-                    <tr><th>Type</th><th>User ID</th><th>Amount</th><th>Action</th></tr>
+                    <tr><th>Type</th><th>User ID</th><th>Amount</th><th style="text-align:right;">Action</th></tr>
                     ${rows}
                 </table>`;
         }
 
-        // ---- Searched user HTML ----
+        // ---- Searched user HTML with full details & history ----
         let searchHtml = '';
         if (searchedUser) {
             const statusHtml = searchedUser.isBanned
-                ? '<span style="color:#ef4444;">BANNED</span>'
-                : '<span style="color:#22c55e;">ACTIVE</span>';
+                ? '<span style="color:#ef4444; font-weight:bold;">BANNED</span>'
+                : '<span style="color:#22c55e; font-weight:bold;">ACTIVE</span>';
+            
+            let depHistory = searchedUser.deposits && searchedUser.deposits.length > 0 
+                ? searchedUser.deposits.map(d => `<div style="font-size:11px; border-bottom:1px solid #292524; padding:4px 0;">📥 <b>$${d.amount}</b> - ${d.status} (${d.date})</div>`).join('')
+                : '<div style="font-size:11px; color:#a8a29e;">No deposit history.</div>';
+
+            let wdHistory = searchedUser.withdrawals && searchedUser.withdrawals.length > 0 
+                ? searchedUser.withdrawals.map(w => `<div style="font-size:11px; border-bottom:1px solid #292524; padding:4px 0;">📤 <b>$${Math.abs(w.amount)}</b> - ${w.status} (${w.date})</div>`).join('')
+                : '<div style="font-size:11px; color:#a8a29e;">No withdrawal history.</div>';
+
             searchHtml = `
-                <div class="user-details">
+                <div class="user-details" style="margin-top:10px;">
                     <p>👤 <b>User:</b> ${escapeHtml(searchedUser.username)} | <b>ID:</b> <code>${escapeHtml(searchedUser.id)}</code></p>
                     <p>💰 <b>Withdrawable Balance:</b> $${Number(searchedUser.balance || 0).toFixed(2)} USDT</p>
                     <p>📥 <b>Recharge Pool:</b> $${Number(searchedUser.rechargePool || 0).toFixed(2)} USDT</p>
                     <p>🔒 <b>Status:</b> ${statusHtml}</p>
-                    <hr style="border-color:#292524; margin:10px 0;">
-                    <b>⚙️ Quick Actions:</b>
+                    
+                    <div style="margin-top:10px; display:flex; gap:8px;">
+                        <button class="btn btn-red" style="flex:1; padding:6px; font-size:11px;" onclick="toggleBan('${escapeHtml(searchedUser.id)}', ${searchedUser.isBanned})">${searchedUser.isBanned ? 'Unban User' : 'Ban User'}</button>
+                    </div>
+
+                    <hr style="border-color:#292524; margin:12px 0;">
+                    <b>⚙️ Manage Balance:</b>
                     <div style="display:flex; gap:8px; margin-top:8px;">
                         <input type="number" id="mod-amt" placeholder="Amount ($)" style="flex:1;">
                         <button class="btn btn-green" onclick="modifyBal('${escapeHtml(searchedUser.id)}', 'add')">+ Add</button>
                         <button class="btn btn-red" onclick="modifyBal('${escapeHtml(searchedUser.id)}', 'cut')">- Cut</button>
                     </div>
+
+                    <hr style="border-color:#292524; margin:12px 0;">
+                    <b>📥 Deposit History:</b>
+                    <div style="max-height:100px; overflow-y:auto; margin-top:5px;">${depHistory}</div>
+
+                    <hr style="border-color:#292524; margin:12px 0;">
+                    <b>📤 Withdrawal History:</b>
+                    <div style="max-height:100px; overflow-y:auto; margin-top:5px;">${wdHistory}</div>
                 </div>`;
         } else if (searchId) {
-            searchHtml = '<p style="color:#ef4444; font-size:12px;">User not found!</p>';
+            searchHtml = '<p style="color:#ef4444; font-size:12px; margin-top:10px;">User not found!</p>';
         }
 
         const html = `
@@ -606,7 +627,7 @@ app.get('/admin/dashboard', checkAdminAuth, async (req, res) => {
         .stat-value { font-size: 18px; font-weight: bold; color: #f5b83d; margin-top: 6px; }
         .card { background: #1c1917; border: 1px solid #292524; border-radius: 14px; padding: 16px; margin-bottom: 16px; }
         .card h3 { color: #f5b83d; margin-top: 0; font-size: 14px; border-bottom: 1px solid #292524; padding-bottom: 8px; }
-        .search-box { display: flex; gap: 8px; margin-bottom: 10px; }
+        .search-box { display: flex; gap: 8px; margin-top: 8px; }
         input, textarea { background: #0c0a09; border: 1px solid #44403c; color: #fff; padding: 10px; border-radius: 8px; width: 100%; font-size: 13px; }
         .btn { background: #f5b83d; color: #000; border: none; font-weight: bold; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
         .btn-green { background: #22c55e; color: #fff; }
@@ -673,6 +694,16 @@ app.get('/admin/dashboard', checkAdminAuth, async (req, res) => {
             alert(data.message);
             location.reload();
         }
+        async function toggleBan(userId, currentStatus) {
+            let res = await fetch('/admin/toggle-ban', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ userId, ban: !currentStatus })
+            });
+            let data = await res.json();
+            alert(data.message);
+            location.reload();
+        }
         async function sendBroadcast() {
             let message = document.getElementById('bc-msg').value;
             if (!message) return alert('Enter broadcast message!');
@@ -734,6 +765,21 @@ app.post('/admin/manage-balance', checkAdminAuth, async (req, res) => {
         res.json({ success: true, message: `Successfully updated balance for user ${userId}!` });
     } catch (e) {
         console.log('Manage balance error:', e);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+app.post('/admin/toggle-ban', checkAdminAuth, async (req, res) => {
+    try {
+        const { userId, ban } = req.body;
+        let u = await User.findOne({ id: String(userId) });
+        if (!u) return res.status(404).json({ success: false, message: 'User not found!' });
+
+        u.isBanned = ban;
+        await u.save();
+        res.json({ success: true, message: `User status updated successfully!` });
+    } catch (e) {
+        console.log('Toggle ban error:', e);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
