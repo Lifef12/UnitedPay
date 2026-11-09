@@ -127,32 +127,6 @@ async function sendTelegramPhoto(chatId, photoUrl, caption = '', replyMarkup = n
     }
 }
 
-async function editTelegramMessage(chatId, messageId, text, replyMarkup = null) {
-    try {
-        let body = { chat_id: chatId, message_id: messageId, text: text, parse_mode: 'Markdown' };
-        if (replyMarkup) body.reply_markup = replyMarkup;
-        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-    } catch (e) {
-        console.log('Telegram Edit Error:', e);
-    }
-}
-
-async function answerCallbackQuery(callbackQueryId, text) {
-    try {
-        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ callback_query_id: callbackQueryId, text: text })
-        });
-    } catch (e) {
-        console.log('Callback Answer Error:', e);
-    }
-}
-
 // ================== REFERRALS ==================
 async function payReferralCommissions(depositUser, usdtAmount) {
     const rates = [0.11, 0.02, 0.01];
@@ -189,7 +163,7 @@ async function payReferralCommissions(depositUser, usdtAmount) {
     }
 }
 
-// ================== APPROVE / REJECT ==================
+// ================== APPROVE / REJECT LOGIC ==================
 async function approveRequest(reqDoc, u, reqId) {
     if (reqDoc.type === 'deposit' && u) {
         const depAmount = Number(reqDoc.amount);
@@ -296,32 +270,6 @@ async function handleWebhookLogic(req, res) {
 
                 await sendTelegramPhoto(chatId, startPhotoUrl, welcomeCaption, webAppMarkup);
             }
-        } else if (update.callback_query) {
-            const query = update.callback_query;
-            const chatId = String(query.message.chat.id);
-            const data = query.data;
-            const messageId = query.message.message_id;
-
-            if (chatId !== String(ADMIN_ID)) return answerCallbackQuery(query.id, 'Unauthorized!');
-
-            if (data.startsWith('approve_') || data.startsWith('reject_')) {
-                const isApprove = data.startsWith('approve_');
-                const reqId = data.replace(isApprove ? 'approve_' : 'reject_', '');
-
-                const reqDoc = await PendingRequest.findOneAndDelete({ reqId });
-                if (!reqDoc) return answerCallbackQuery(query.id, 'Request already handled!');
-
-                const u = await User.findOne({ id: reqDoc.userId });
-
-                if (isApprove) {
-                    await approveRequest(reqDoc, u, reqId);
-                    editTelegramMessage(chatId, messageId, `✅ *Request Approved*\nUser ID: ${reqDoc.userId}\nAmount: $${reqDoc.amount}`);
-                } else {
-                    await rejectRequest(reqDoc, u, reqId);
-                    editTelegramMessage(chatId, messageId, `❌ *Request Rejected*\nUser ID: ${reqDoc.userId}\nAmount: $${reqDoc.amount}`);
-                }
-                answerCallbackQuery(query.id, 'Done!');
-            }
         }
     } catch (err) {
         console.log('Webhook error:', err);
@@ -386,14 +334,7 @@ app.post('/api/deposit', async (req, res) => {
         });
 
         if (ADMIN_ID) {
-            const msgText = `📥 *New Deposit Request*\n\n👤 User ID: \`${userId}\`\n💰 Amount: *$${amt} USDT*\n🔑 TxHash: \`${txHash}\``;
-            const inlineKeyboard = {
-                inline_keyboard: [[
-                    { text: '✅ Approve', callback_data: `approve_${reqId}` },
-                    { text: '❌ Reject', callback_data: `reject_${reqId}` }
-                ]]
-            };
-            await sendTelegramMessage(ADMIN_ID, msgText, inlineKeyboard);
+            await sendTelegramMessage(ADMIN_ID, `📥 *New Deposit Request*\n\n👤 User ID: \`${userId}\`\n💰 Amount: *$${amt} USDT*\n🔑 TxHash: \`${txHash}\``);
         }
 
         res.json({ success: true, message: 'Deposit request submitted successfully' });
@@ -440,14 +381,7 @@ app.post('/api/withdraw', async (req, res) => {
         });
 
         if (ADMIN_ID) {
-            const msgText = `📤 *New Withdraw Request*\n\n👤 User ID: \`${userId}\`\n💰 Amount: *$${amt} USDT*\n🏦 Address: \`${address}\``;
-            const inlineKeyboard = {
-                inline_keyboard: [[
-                    { text: '✅ Approve', callback_data: `approve_${reqId}` },
-                    { text: '❌ Reject', callback_data: `reject_${reqId}` }
-                ]]
-            };
-            await sendTelegramMessage(ADMIN_ID, msgText, inlineKeyboard);
+            await sendTelegramMessage(ADMIN_ID, `📤 *New Withdraw Request*\n\n👤 User ID: \`${userId}\`\n💰 Amount: *$${amt} USDT*\n🏦 Address: \`${address}\``);
         }
 
         res.json({ success: true, message: 'Withdrawal requested successfully', newBalance: u.balance });
@@ -457,7 +391,7 @@ app.post('/api/withdraw', async (req, res) => {
     }
 });
 
-// ================== ADMIN ==================
+// ================== WEBSITE ADMIN PANEL ==================
 app.get('/admin/login', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -538,7 +472,7 @@ app.get('/admin/dashboard', checkAdminAuth, async (req, res) => {
             });
         }
 
-        // ---- Pending requests HTML ----
+        // ---- Pending requests HTML on website ----
         let pendingHtml = '';
         if (requests.length === 0) {
             pendingHtml = '<p style="font-size:12px; color:#a8a29e; margin:0;">No pending requests.</p>';
@@ -563,7 +497,7 @@ app.get('/admin/dashboard', checkAdminAuth, async (req, res) => {
                 </table>`;
         }
 
-        // ---- Searched user HTML with full details & history ----
+        // ---- Searched User Details & History on website ----
         let searchHtml = '';
         if (searchedUser) {
             const statusHtml = searchedUser.isBanned
@@ -784,6 +718,10 @@ app.post('/admin/toggle-ban', checkAdminAuth, async (req, res) => {
     }
 });
 
+app.post('/admin/broadcast', checkAdminAuth, async (req, routes) => {
+    // handled via express route below
+});
+
 app.post('/admin/broadcast', checkAdminAuth, async (req, res) => {
     try {
         const { message } = req.body;
@@ -802,15 +740,6 @@ app.post('/admin/broadcast', checkAdminAuth, async (req, res) => {
 
 // ================== START SERVER ==================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', async () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
-    const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
-    if (RENDER_URL && BOT_TOKEN) {
-        try {
-            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/setWebhook?url=${RENDER_URL}/api/webhook/${BOT_TOKEN}`);
-            console.log('Telegram Webhook Set Successfully!');
-        } catch (e) {
-            console.log('Failed to set webhook:', e);
-        }
-    }
 });
