@@ -1,1 +1,1009 @@
+<!DOCTYPE html>  
+<html lang="en">  
+<head>  
+    <meta charset="UTF-8">  
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">  
+    <title>UnitedPay - AI Investment & Cloud Mining</title>  
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>  
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+:root {
+    --bg: #f3f4f6; --card: #ffffff; --card-light: #f8fafc; --text: #1e293b; --muted: #64748b;
+    --primary: #3b82f6; --purple-theme: #4a356b; --purple-dark: #372652; --border: #e2e8f0;
+}
+* { 
+    box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; 
+    -webkit-tap-highlight-color: transparent; 
+}
 
+body {
+    background-color: var(--bg) !important;
+    background-image: 
+        linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px);
+    background-size: 20px 20px;
+    color: var(--text);
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh; padding: 0 0 100px 0; overflow-x: hidden; touch-action: manipulation;
+}
+
+.app-container { width: 100%; max-width: 440px; padding: 0 12px; text-align: center; position: relative; z-index: 2; }
+
+#toast-notification {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%) translateY(-110px);
+    background: #372652; color: #fff; padding: 12px 16px; border-radius: 12px;
+    font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); z-index: 99999999;
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); width: 92%; max-width: 400px; text-align: left;
+}
+#toast-notification.show { transform: translateX(-50%) translateY(0); }
+#toast-notification i { color: #f5b83d; font-size: 15px; }
+
+#splash-screen { 
+    position: fixed; inset: 0; background: #372652; 
+    display: flex; flex-direction: column; justify-content: center; align-items: center; 
+    z-index: 9999999; transition: opacity 0.5s ease; padding: 0 30px; 
+}
+.splash-box-header {
+    font-size: 24px; font-weight: 800; color: #fff;
+    letter-spacing: 2px; text-transform: uppercase; margin-top: 15px;
+}
+
+/* TOP BAR */
+.top-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 4px 10px 4px; margin-bottom: 4px;
+}
+.top-bar-left { display: flex; align-items: center; gap: 8px; }
+.top-bar-brand { font-size: 16px; font-weight: 800; color: #372652; }
+.top-bar-right {
+    background: #fff; border: 1px solid var(--border);
+    padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 700;
+    color: #64748b; display: flex; align-items: center; gap: 6px; cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+/* BANNER CAROUSEL */
+.banner-carousel {
+    width: 100%; height: 160px; border-radius: 14px; overflow: hidden;
+    position: relative; margin-bottom: 12px; border: 1px solid var(--border);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.06); background: #fff;
+}
+.banner-slide {
+    position: absolute; inset: 0; opacity: 0; transition: opacity 0.8s ease-in-out;
+    display: flex; align-items: center; justify-content: center;
+}
+.banner-slide.active { opacity: 1; }
+.banner-slide img { width: 100%; height: 100%; object-fit: cover; }
+
+/* USER DASHBOARD CARD */
+.dash-card {
+    background: linear-gradient(135deg, #4a356b 0%, #372652 100%);
+    border-radius: 16px; padding: 18px; margin-bottom: 14px; text-align: left;
+    box-shadow: 0 8px 25px rgba(74, 53, 107, 0.25); color: #fff; position: relative; overflow: hidden;
+}
+.dash-balance-label { font-size: 11px; font-weight: 700; color: #d8b4fe; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 1px; }
+.dash-balance-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.dash-balance-val { font-size: 30px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
+
+.user-badge-pill {
+    background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #fff; padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 800;
+}
+.user-id-row { font-size: 11.5px; color: #e9d5ff; font-weight: 600; display: flex; align-items: center; justify-content: space-between; }
+
+/* ACTION BUTTONS GRID */
+.home-actions-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;
+}
+.home-action-btn {
+    background: #fff; border: 1px solid var(--border); border-radius: 14px;
+    padding: 14px 4px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.03); transition: transform 0.1s ease;
+}
+.home-action-btn:active { transform: scale(0.96); }
+.hab-icon {
+    width: 44px; height: 44px; border-radius: 50%; background: #f3e8ff;
+    border: 1px solid #e9d5ff; display: flex; justify-content: center;
+    align-items: center; color: #4a356b; font-size: 17px;
+}
+.hab-label { font-size: 11px; font-weight: 700; color: #334155; text-align: center; }
+
+/* ACTIVITY CARDS */
+.activity-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 12px;
+    margin-bottom: 10px; display: flex; align-items: center; gap: 12px; text-align: left;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.04);
+}
+.activity-thumb {
+    width: 70px; height: 70px; border-radius: 10px; object-fit: cover; flex-shrink: 0;
+    border: 1px solid var(--border);
+}
+.activity-content { flex: 1; }
+.activity-title { font-size: 12px; font-weight: 700; color: #1e293b; line-height: 1.4; margin-bottom: 6px; }
+.activity-footer-row { display: flex; justify-content: space-between; align-items: center; }
+.activity-reward { font-size: 12px; font-weight: 800; color: #16a34a; }
+.view-task-btn {
+    background: #372652; color: #fff; border: none; border-radius: 8px;
+    padding: 5px 12px; font-size: 11px; font-weight: 700; cursor: pointer;
+}
+
+.title-header { color: #372652; font-size: 15px; font-weight: 800; margin: 16px 0 10px 0; text-align: left; text-transform: uppercase; display: flex; align-items: center; gap: 8px; }
+.title-header::before { content: ''; width: 4px; height: 15px; border-radius: 2px; background: #4a356b; }
+
+/* TASK HALL SPECIFIC UI */
+.task-reset-box {
+    background: linear-gradient(180deg, #5b5575 0%, #372652 100%);
+    border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 6px;
+    padding: 8px 24px; color: #fff; margin: 10px auto 16px auto; width: fit-content;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.task-reset-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; color: #e9d5ff; }
+.task-reset-timer { font-size: 22px; font-weight: 800; letter-spacing: 1px; color: #fff; }
+
+.task-stats-banner {
+    background: #372652; border-radius: 12px; padding: 14px 10px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; color: #fff; margin-bottom: 16px;
+}
+.task-stat-col { display: flex; flex-direction: column; align-items: center; }
+.task-stat-lbl { font-size: 11px; font-weight: 700; color: #d8b4fe; margin-bottom: 4px; }
+.task-stat-val { font-size: 20px; font-weight: 800; color: #fff; }
+
+.task-tab-toggle {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: #e2e8f0;
+    border-radius: 10px; padding: 4px; margin-bottom: 16px;
+}
+.task-toggle-btn {
+    padding: 10px; font-size: 13px; font-weight: 700; border-radius: 8px; cursor: pointer; color: #64748b; border: none; background: transparent; transition: all 0.2s;
+}
+.task-toggle-btn.active { background: #372652; color: #fff; }
+
+.task-item-card {
+    background: #fdfbf7; border: 1px solid #e2e8f0; border-radius: 16px; padding: 14px;
+    display: flex; gap: 12px; align-items: center; text-align: left; margin-bottom: 12px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.03); position: relative;
+}
+.task-item-thumb {
+    width: 95px; height: 70px; border-radius: 10px; object-fit: cover; flex-shrink: 0;
+    border: 1px solid var(--border);
+}
+.task-item-details { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.task-item-title { font-size: 14px; font-weight: 800; color: #1e293b; margin-bottom: 4px; }
+.task-item-row { display: flex; justify-content: space-between; font-size: 12px; color: #64748b; font-weight: 600; }
+.task-item-row b { color: #1e293b; font-weight: 700; }
+.task-item-row b.green-val { color: #16a34a; font-weight: 800; }
+
+.to-complete-btn {
+    background: #4a356b; color: #fff; border: none; border-radius: 8px;
+    padding: 8px 16px; font-size: 12px; font-weight: 800; cursor: pointer;
+    align-self: flex-end; margin-top: 6px; box-shadow: 0 3px 8px rgba(74, 53, 107, 0.3);
+    transition: background 0.2s ease;
+}
+.to-complete-btn.done-btn {
+    background: #22c55e !important; color: #fff !important; cursor: default !important; box-shadow: none !important;
+}
+
+/* VIP CARDS */
+.vip-list-container { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.vip-card-item {
+    background: #fff; border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.04); text-align: left; position: relative;
+}
+.vip-card-header {
+    background: linear-gradient(90deg, #ff4b2b 0%, #ff416c 100%);
+    color: #fff; font-size: 12px; font-weight: 800; padding: 4px 14px;
+    display: inline-block; border-bottom-right-radius: 12px;
+}
+.vip-card-header.active-vip { background: linear-gradient(90deg, #16a34a 0%, #22c55e 100%); }
+
+.vip-card-body { padding: 12px 14px; display: flex; gap: 12px; align-items: center; }
+.vip-card-thumb {
+    width: 90px; height: 75px; border-radius: 10px; object-fit: cover; flex-shrink: 0;
+    border: 1px solid var(--border);
+}
+.vip-details-table { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.vip-row-line { display: flex; justify-content: space-between; font-size: 11.5px; color: #64748b; }
+.vip-row-line b { color: #1e293b; font-weight: 700; }
+.vip-row-line b.val-green { color: #16a34a; font-weight: 800; }
+
+.vip-card-footer {
+    padding: 10px 14px; background: #f8fafc; border-top: 1px solid var(--border);
+    display: flex; justify-content: flex-end; align-items: center; gap: 8px;
+}
+.unlock-vip-btn {
+    background: linear-gradient(135deg, #f5b83d 0%, #d97706 100%);
+    color: #fff; border: none; border-radius: 10px; padding: 8px 18px;
+    font-size: 12px; font-weight: 800; cursor: pointer; box-shadow: 0 3px 10px rgba(217, 119, 6, 0.3);
+}
+.unlock-vip-btn.activated { background: #16a34a; box-shadow: none; cursor: default; }
+
+/* TEAM PROMOTION */
+.team-promo-card {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    border: 1px solid #f59e0b; border-radius: 16px; padding: 16px; margin-bottom: 14px; text-align: left;
+    box-shadow: 0 4px 15px rgba(245, 158, 11, 0.15); color: #1e293b; position: relative;
+}
+.team-referral-box {
+    display: flex; justify-content: space-between; align-items: center; background: #fff;
+    border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; margin: 8px 0 12px 0;
+}
+.team-social-icons { display: flex; gap: 12px; font-size: 18px; color: #372652; justify-content: center; margin-top: 10px; }
+
+.team-stats-grid {
+    background: linear-gradient(135deg, #4a356b 0%, #372652 100%);
+    border-radius: 16px; padding: 16px; color: #fff; margin-bottom: 16px;
+    box-shadow: 0 8px 25px rgba(74, 53, 107, 0.25); display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center;
+}
+.tstat-col { display: flex; flex-direction: column; }
+.tstat-lbl { font-size: 9.5px; font-weight: 700; color: #d8b4fe; text-transform: uppercase; margin-bottom: 2px; }
+.tstat-val { font-size: 15px; font-weight: 800; color: #fff; }
+
+.team-level-cards-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 16px; }
+.tlevel-card {
+    border-radius: 16px; padding: 16px; text-align: left; color: #1e293b; box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    display: flex; flex-direction: column; gap: 8px; position: relative; border: 1px solid rgba(0,0,0,0.08);
+}
+.tlevel-1 { background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); }
+.tlevel-2 { background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%); }
+.tlevel-3 { background: linear-gradient(135deg, #fef08a 0%, #fde047 100%); }
+
+.tlevel-top-row { display: flex; justify-content: space-between; align-items: center; }
+.tlevel-title { font-size: 14px; font-weight: 800; color: #372652; }
+.tlevel-badge { background: #372652; color: #fff; padding: 2px 8px; border-radius: 99px; font-size: 10px; font-weight: 800; }
+.tlevel-details-row { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; color: #475569; }
+.tlevel-btn { background: #372652; color: #fff; border: none; border-radius: 8px; padding: 8px; font-size: 11px; font-weight: 800; cursor: pointer; text-align: center; }
+
+/* MEMBER LIST */
+.member-list-container { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; overflow: hidden; }
+.member-pay-card {
+    background: linear-gradient(135deg, #4a356b 0%, #372652 100%);
+    border-radius: 12px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;
+    box-shadow: 0 4px 15px rgba(74, 53, 107, 0.2); color: #fff; text-align: left; border: 1px solid rgba(255,255,255,0.1);
+}
+.member-pay-left { font-size: 18px; font-weight: 800; color: #fff; }
+.member-pay-right { text-align: right; }
+.member-masked-id { font-size: 12px; font-weight: 700; color: #e9d5ff; margin-bottom: 3px; }
+.member-vip-pill {
+    background: #d97706; color: #fff; font-size: 9.5px; font-weight: 800; padding: 2px 8px; border-radius: 99px; display: inline-block;
+}
+
+/* REGULATORY AUTHORITY */
+.certifications-card {
+    background: linear-gradient(135deg, #4a356b 0%, #372652 100%);
+    border-radius: 16px; padding: 16px; margin-bottom: 16px; text-align: left;
+    box-shadow: 0 8px 25px rgba(74, 53, 107, 0.25); color: #fff;
+}
+.cert-item-box {
+    background: #ffffff; border-radius: 12px; padding: 14px; text-align: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-top: 10px; max-width: 220px; margin-left: auto; margin-right: auto;
+}
+.cert-item-box img { max-width: 100%; height: 50px; object-fit: contain; margin-bottom: 8px; }
+.cert-item-box span { font-size: 10px; font-weight: 800; color: #372652; line-height: 1.2; text-transform: uppercase; }
+
+/* ME PROFILE BANNER */
+.me-header-box {
+    background: linear-gradient(135deg, #4a356b 0%, #372652 100%);
+    border-radius: 16px; padding: 16px; margin-bottom: 12px; color: #fff; text-align: left;
+    box-shadow: 0 8px 25px rgba(74, 53, 107, 0.25); position: relative; overflow: hidden;
+}
+.me-top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.me-user-info { display: flex; align-items: center; gap: 10px; }
+.me-user-avatar { width: 44px; height: 44px; border-radius: 50%; background: #fff; color: #372652; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; }
+.me-user-meta h3 { font-size: 14px; font-weight: 800; color: #fff; }
+.me-user-meta span { font-size: 11px; color: #e9d5ff; font-weight: 700; }
+
+.me-stats-banner {
+    background: linear-gradient(135deg, #f5b83d 0%, #d97706 100%);
+    border-radius: 12px; padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    text-align: center; color: #fff; margin-bottom: 14px; box-shadow: 0 4px 15px rgba(217, 119, 6, 0.25);
+}
+.me-stat-col { display: flex; flex-direction: column; }
+.me-stat-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; color: rgba(255,255,255,0.9); margin-bottom: 2px; }
+.me-stat-val { font-size: 20px; font-weight: 800; color: #fff; }
+
+.me-actions-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 16px;
+}
+.me-action-btn {
+    background: #fff; border: 1px solid var(--border); border-radius: 14px;
+    padding: 14px 4px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.03); transition: transform 0.1s ease;
+}
+.me-action-btn:active { transform: scale(0.96); }
+.me-act-icon {
+    width: 42px; height: 42px; border-radius: 50%; background: #f3e8ff;
+    border: 1px solid #e9d5ff; display: flex; justify-content: center;
+    align-items: center; color: #4a356b; font-size: 16px;
+}
+.me-act-label { font-size: 11px; font-weight: 700; color: #334155; text-align: center; }
+
+/* FLOATING SIDE BUTTONS */
+.floating-widgets {
+    position: fixed; right: 12px; bottom: 85px; display: flex; flex-direction: column; gap: 8px; z-index: 9999;
+}
+.float-widget-btn {
+    width: 42px; height: 42px; border-radius: 50%; background: #372652; border: 2px solid #fff;
+    display: flex; justify-content: center; align-items: center; color: #fff; font-size: 16px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25); cursor: pointer;
+}
+.float-widget-btn.telegram { background: #0ea5e9; }
+.float-widget-btn.admin-btn { background: #dc2626; display: none; }
+
+/* BOTTOM NAVIGATION */
+.bottom-nav { 
+    position: fixed; bottom: 0; left: 0; width: 100%; 
+    background: #ffffff; border-top: 1px solid var(--border); 
+    display: flex; justify-content: space-around; align-items: center; 
+    padding: 8px 10px 12px 10px; z-index: 999999; box-shadow: 0 -4px 15px rgba(0,0,0,0.05);
+}
+.nav-item { color: #94a3b8; text-decoration: none; display: flex; flex-direction: column; align-items: center; font-size: 10px; font-weight: 700; gap: 4px; flex: 1; cursor: pointer; transition: color 0.2s; }
+.nav-item i { font-size: 18px; }
+.nav-item.active { color: #372652; }
+
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ACTION POPUP MODAL */
+#action-popup { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 10000; padding: 20px; backdrop-filter: blur(3px); }
+#action-popup.active { display: flex; }
+.ap-box { background: #fff; color: #1e293b; width: 100%; max-width: 330px; border-radius: 18px; padding: 24px 20px 20px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
+.ap-icon { width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; font-size: 30px; }
+.ap-icon.success { color: #16a34a; background: #dcfce7; }
+.ap-icon.error { color: #dc2626; background: #fee2e2; }
+.ap-title { font-size: 18px; font-weight: 800; margin-bottom: 6px; color: #1e293b; }
+.ap-msg { font-size: 13px; color: #64748b; margin-bottom: 18px; line-height: 1.4; display: none; }
+.ap-btn { background: #372652; color: #fff; border: none; border-radius: 10px; padding: 10px 30px; font-size: 14px; font-weight: 700; cursor: pointer; width: 100%; }
+
+/* LUCKY WHEEL MODAL */
+#lucky-wheel-modal {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(5px);
+    display: none; align-items: center; justify-content: center; z-index: 9999999; padding: 20px;
+}
+#lucky-wheel-modal.active { display: flex; }
+.lw-card {
+    background: #372652; width: 100%; max-width: 360px; border-radius: 24px; padding: 20px;
+    text-align: center; color: #fff; position: relative; box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+}
+.lw-close {
+    position: absolute; top: 14px; right: 14px; width: 32px; height: 32px; border-radius: 50%;
+    background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 14px; color: #fff;
+}
+.lw-remaining { font-size: 14px; font-weight: 800; color: #f5b83d; margin-bottom: 12px; }
+.lw-wheel-wrapper { position: relative; width: 280px; height: 280px; margin: 0 auto 16px auto; }
+.lw-wheel-img {
+    width: 100%; height: 100%; border-radius: 50%; border: 6px solid #f5b83d;
+    box-shadow: 0 0 25px rgba(245, 184, 61, 0.4); transition: transform 4s cubic-bezier(0.15, 0.9, 0.1, 1);
+}
+.lw-pointer {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 48px; height: 48px; border-radius: 50%; background: #ff416c; border: 3px solid #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff; cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 5;
+}
+.lw-desc-box {
+    background: #fff; color: #1e293b; border-radius: 14px; padding: 12px 14px; font-size: 12px; font-weight: 700; margin-bottom: 14px;
+}
+.lw-share-btn {
+    background: linear-gradient(135deg, #4a356b 0%, #372652 100%); border: 1px solid rgba(255,255,255,0.2);
+    color: #fff; width: 100%; padding: 12px; border-radius: 12px; font-size: 14px; font-weight: 800; cursor: pointer;
+}
+
+/* ANNOUNCEMENT POPUP */
+.announcement-overlay {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px);
+    display: none; justify-content: center; align-items: center; z-index: 9999999; padding: 20px;
+}
+.announcement-overlay.active { display: flex; }
+.announcement-card {
+    background: #fff; width: 100%; max-width: 360px;
+    border-radius: 20px; padding: 20px; box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+    text-align: left; color: #1e293b; max-height: 85vh; overflow-y: auto;
+}
+.announcement-card h3 { font-size: 17px; font-weight: 800; color: #372652; margin-bottom: 10px; text-align: center; }
+.announcement-body { font-size: 11.5px; color: #64748b; line-height: 1.6; margin-bottom: 14px; }
+.announcement-body b { color: #1e293b; }
+.announcement-plan-row {
+    background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 10px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center;
+    font-size: 11.5px; font-weight: 700; color: #1e293b;
+}
+.announcement-plan-row span { color: #16a34a; font-weight: 800; }
+</style>  
+</head>  
+<body>  
+
+<div id="action-popup">
+  <div class="ap-box">
+    <div class="ap-icon success" id="ap-icon">✓</div>
+    <div class="ap-title" id="ap-title">Action Successful!</div>
+    <div class="ap-msg" id="ap-msg"></div>
+    <button class="ap-btn" onclick="closeActionPopup()">OK</button>
+  </div>
+</div>
+
+<div id="toast-notification">
+    <i class="fa-solid fa-circle-check"></i>
+    <span id="toast-msg">Action successful!</span>
+</div>
+
+<!-- LUCKY WHEEL MODAL -->
+<div id="lucky-wheel-modal">
+    <div class="lw-card">
+        <div class="lw-close" onclick="closeLuckyWheel()"><i class="fa-solid fa-xmark"></i></div>
+        <div class="lw-remaining">Remaining times <span id="lw-chances-count">0</span></div>
+        
+        <div class="lw-wheel-wrapper">
+            <svg class="lw-wheel-img" id="wheel-svg" viewBox="0 0 500 500">
+                <circle cx="250" cy="250" r="240" fill="#fffbe6"/>
+                <path d="M250 250 L250 10 A240 240 0 0 1 450 140 Z" fill="#ffccd5"/>
+                <path d="M250 250 L450 140 A240 240 0 0 1 490 350 Z" fill="#ffe5ec"/>
+                <path d="M250 250 L490 350 A240 240 0 0 1 350 490 Z" fill="#ffccd5"/>
+                <path d="M250 250 L350 490 A240 240 0 0 1 140 490 Z" fill="#ffe5ec"/>
+                <path d="M250 250 L140 490 A240 240 0 0 1 10 350 Z" fill="#ffccd5"/>
+                <path d="M250 250 L10 350 A240 240 0 0 1 50 140 Z" fill="#ffe5ec"/>
+                <path d="M250 250 L50 140 A240 240 0 0 1 250 10 Z" fill="#ffccd5"/>
+                <text x="330" y="80" font-size="19" font-weight="800" fill="#372652" transform="rotate(30, 330, 80)">0.10 ($)</text>
+                <text x="430" y="250" font-size="18" font-weight="800" fill="#372652" transform="rotate(90, 430, 250)">150.00</text>
+                <text x="350" y="420" font-size="18" font-weight="800" fill="#372652" transform="rotate(150, 350, 420)">1,000.00</text>
+                <text x="180" y="460" font-size="18" font-weight="800" fill="#372652" transform="rotate(210, 180, 460)">50.00</text>
+                <text x="60" y="380" font-size="18" font-weight="800" fill="#372652" transform="rotate(270, 60, 380)">500.00</text>
+                <text x="70" y="180" font-size="18" font-weight="800" fill="#372652" transform="rotate(330, 70, 180)">5.00</text>
+            </svg>
+            <div class="lw-pointer" onclick="spinWheel()">SPIN</div>
+        </div>
+
+        <div class="lw-desc-box">
+            Invite friends to recharge 195 (USDT) Get a chance
+        </div>
+        <button class="lw-share-btn" onclick="switchTab('team'); closeLuckyWheel();">Share</button>
+    </div>
+</div>
+
+<!-- FLOATING WIDGETS -->
+<div class="floating-widgets">
+    <div class="float-widget-btn admin-btn" id="floating-admin-btn" onclick="switchTab('admin')"><i class="fa-solid fa-user-gear"></i></div>
+    <div class="float-widget-btn telegram" onclick="openTelegramChannel()"><i class="fa-brands fa-telegram"></i></div>
+    <div class="float-widget-btn" onclick="openAnnouncementModal()"><i class="fa-solid fa-calendar-days"></i></div>
+    <div class="float-widget-btn" onclick="openLuckyWheel()"><i class="fa-solid fa-gift"></i></div>
+    <div class="float-widget-btn" onclick="openSupportChat()"><i class="fa-solid fa-envelope"></i></div>
+</div>
+
+<!-- WELCOME ANNOUNCEMENT POPUP -->
+<div class="announcement-overlay active" id="announcement-modal">
+    <div class="announcement-card">
+        <h3>Announcement</h3>
+        <div class="announcement-body">
+            Dear investors, are you ready for this wealth feast? We cordially invite you to join the UnitedPay investment platform and enjoy exclusive high-yield returns!<br><br>
+            Earn returns on your investment on the same day. Membership is valid for 365 days, after which your principal will be fully refunded.<br><br>
+            
+            <div style="margin-bottom: 10px;">
+                <div class="announcement-plan-row">VIP-1: <span>Invest $0, Earn $1 Daily</span></div>
+                <div class="announcement-plan-row">VIP-2: <span>Invest $10, Earn $6 Daily</span></div>
+                <div class="announcement-plan-row">VIP-3: <span>Invest $30, Earn $20 Daily</span></div>
+                <div class="announcement-plan-row">VIP-4: <span>Invest $90, Earn $60 Daily</span></div>
+                <div class="announcement-plan-row">VIP-5: <span>Invest $230, Earn $150 Daily</span></div>
+                <div class="announcement-plan-row">VIP-6: <span>Invest $500, Earn $350 Daily</span></div>
+                <div class="announcement-plan-row">VIP-7: <span>Invest $1,000, Earn $700 Daily</span></div>
+                <div class="announcement-plan-row">VIP-8: <span>Invest $2,000, Earn $1,500 Daily</span></div>
+                <div class="announcement-plan-row">VIP-9: <span>Invest $5,000, Earn $3,750 Daily</span></div>
+                <div class="announcement-plan-row">VIP-10: <span>Invest $10,000, Earn $7,500 Daily</span></div>
+                <div class="announcement-plan-row">VIP-11: <span>Invest $20,000, Earn $16,000 Daily</span></div>
+            </div>
+
+            <b>Team promotion rewards:</b><br>
+            ✔️ Invite 26 Level A users to register and receive VIP2 status as a gift!<br>
+            ✔️ Invite 5 people who have achieved effective A-level recharges and receive VIP4 status as a gift!<br>
+            ✔️ Team three-tier recharge rebate: 11% - 2% - 1%
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button class="ap-btn" style="flex: 1; background: #e2e8f0; color: #1e293b;" onclick="closeAnnouncement()">Close</button>
+            <button class="ap-btn" style="flex: 1;" onclick="closeAnnouncement()">Next</button>
+        </div>
+    </div>
+</div>
+
+<div id="splash-screen">  
+    <div style="width: 80px; height: 80px; border-radius: 50%; background: #4a356b; display: flex; justify-content: center; align-items: center; color: #fff; font-size: 32px; border: 3px solid #f5b83d;">
+        <i class="fa-solid fa-gem"></i>
+    </div>
+    <div class="splash-box-header">UNITEDPAY</div>
+</div>  
+
+<div class="app-container">  
+
+    <!-- TOP BAR -->
+    <div class="top-bar">
+        <div class="top-bar-left">
+            <div style="width: 30px; height: 30px; border-radius: 50%; background: #372652; display: flex; justify-content: center; align-items: center; color: #fff; font-weight: 800; font-size: 13px;">U</div>
+            <div class="top-bar-brand">UnitedPay</div>
+        </div>
+        <div class="top-bar-right" onclick="showToast('Language set to English')">
+            <i class="fa-solid fa-globe" style="color: #372652;"></i>
+            <span>English</span>
+        </div>
+    </div>
+
+    <!-- TAB 1: HOME / DASHBOARD -->
+    <div id="tab-home" class="tab-content active">
+        
+        <!-- BANNER CAROUSEL -->
+        <div class="banner-carousel" id="banner-carousel">
+            <div class="banner-slide active">
+                <img src="https://i.ibb.co/MD6JSJ0G/6ad1e4124233.webp" alt="UnitedPay Banner 1">
+            </div>
+            <div class="banner-slide">
+                <img src="https://i.ibb.co/JR4RRkb7/file-00000000abd481f48234067ed5a24c85.png" alt="UnitedPay Banner 2">
+            </div>
+        </div>
+
+        <!-- USER BALANCE CARD -->
+        <div class="dash-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div>
+                    <div class="dash-balance-label">Withdrawable Balance</div>
+                    <div class="dash-balance-val">$<span id="main-balance">0.00</span></div>
+                </div>
+                <div style="text-align: right;">
+                    <div class="dash-balance-label">Recharge Amount</div>
+                    <div style="font-size: 22px; font-weight: 800; color: #e9d5ff;">$<span id="recharge-pool-balance">0.00</span></div>
+                </div>
+            </div>
+            <div class="user-id-row" style="margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.15); padding-top: 8px;">
+                <span id="user-id-text">ID: ---</span>
+                <div class="user-badge-pill" id="user-vip-badge">VIP-1</div>
+            </div>
+        </div>
+
+        <!-- 4 QUICK ACTION BUTTONS -->
+        <div class="home-actions-grid">
+            <div class="home-action-btn" onclick="switchTab('recharge')">
+                <div class="hab-icon"><i class="fa-solid fa-wallet"></i></div>
+                <div class="hab-label">Recharge</div>
+            </div>
+            <div class="home-action-btn" onclick="switchTab('withdraw')">
+                <div class="hab-icon"><i class="fa-solid fa-money-bill-transfer"></i></div>
+                <div class="hab-label">Withdraw</div>
+            </div>
+            <div class="home-action-btn" onclick="openAppDownloadModal()">
+                <div class="hab-icon"><i class="fa-solid fa-cloud-arrow-down"></i></div>
+                <div class="hab-label">App</div>
+            </div>
+            <div class="home-action-btn" onclick="openCompanyProfileModal()">
+                <div class="hab-icon"><i class="fa-solid fa-building-shield"></i></div>
+                <div class="hab-label">Company Profile</div>
+            </div>
+        </div>
+
+        <div class="home-action-btn" style="width: 100%; flex-direction: row; justify-content: center; gap: 12px; margin-bottom: 16px; padding: 12px;" onclick="switchTab('team')">
+            <div class="hab-icon" style="width: 38px; height: 38px; font-size: 15px;"><i class="fa-solid fa-users"></i></div>
+            <div class="hab-label" style="font-size: 13px; font-weight: 800; color: #372652;">Invite Friends & Earn Rewards</div>
+        </div>
+
+        <h2 class="title-header">Activitys</h2>
+        
+        <!-- ACTIVITY CARDS -->
+        <div class="activity-card">
+            <img src="https://i.ibb.co/JR4RRkb7/file-00000000abd481f48234067ed5a24c85.png" class="activity-thumb" alt="Activity">
+            <div class="activity-content">
+                <div class="activity-title">Invite 26 A-level people to register and get VIP2 status as a gift!</div>
+                <div class="activity-footer-row">
+                    <span class="activity-reward">+20.00 USDT</span>
+                    <button class="view-task-btn" onclick="switchTab('team')">View Tasks</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="activity-card">
+            <img src="https://i.ibb.co/JR4RRkb7/file-00000000abd481f48234067ed5a24c85.png" class="activity-thumb" alt="Activity">
+            <div class="activity-content">
+                <div class="activity-title">Invite 5 effective A-level recharges and get VIP4 status as a gift!</div>
+                <div class="activity-footer-row">
+                    <span class="activity-reward">+150.00 USDT</span>
+                    <button class="view-task-btn" onclick="switchTab('team')">View Tasks</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MEMBER LIST -->
+        <h2 class="title-header">Member list</h2>
+        <div class="member-list-container" id="live-member-list">
+            <div class="member-pay-card">
+                <div class="member-pay-left" id="live-amt-0">+$1,450.00</div>
+                <div class="member-pay-right">
+                    <div class="member-masked-id" id="live-id-0">@4k891******qw</div>
+                    <div class="member-vip-pill" id="live-vip-0">VIP-4</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- REGULATORY AUTHORITY -->
+        <h2 class="title-header">Regulatory Authority</h2>
+        <div class="certifications-card">
+            <div style="font-size: 11px; font-weight: 700; color: #d8b4fe; margin-bottom: 2px;">Official Government Certifications & Approvals</div>
+            <div class="cert-item-box">
+                <img src="https://i.ibb.co/MD6JSJ0G/6ad1e4124233.webp" alt="Government Certification">
+                <span>U.S. Securities and Exchange Commission</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 2: DYNAMIC ACTIVE PLANS TASK TAB -->
+    <div id="tab-task" class="tab-content">
+        <!-- COUNTDOWN TIMER HEADER -->
+        <div class="task-reset-box">
+            <div class="task-reset-title">TASK RESET</div>
+            <div class="task-reset-timer" id="task-countdown-timer">23:59:59</div>
+        </div>
+
+        <!-- TASK STATS BANNER -->
+        <div class="task-stats-banner">
+            <div class="task-stat-col">
+                <span class="task-stat-lbl">All tasks for today</span>
+                <span class="task-stat-val" id="task-total-count">0</span>
+            </div>
+            <div class="task-stat-col">
+                <span class="task-stat-lbl">Today's remaining tasks</span>
+                <span class="task-stat-val" id="task-rem-count">0</span>
+            </div>
+        </div>
+
+        <!-- IN PROGRESS / COMPLETED TAB TOGGLE -->
+        <div class="task-tab-toggle">
+            <button class="task-toggle-btn active" id="btn-in-progress" onclick="switchTaskSubTab('progress')">In progress</button>
+            <button class="task-toggle-btn" id="btn-completed" onclick="switchTaskSubTab('completed')">Completed</button>
+        </div>
+
+        <!-- TASK LIST WRAPPER -->
+        <div id="task-list-wrapper"></div>
+    </div>
+
+    <!-- TAB 3: TEAM / INVITE -->
+    <div id="tab-team" class="tab-content">  
+        <h2 class="title-header">Team Promotion</h2>  
+          
+        <!-- PROMO BANNER WITH CODE & SOCIAL ICONS -->
+        <div class="team-promo-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-weight: 800; color: #372652;">
+                <span>Invitation Code</span>
+                <span id="promo-code-txt" style="background: #372652; color: #fff; padding: 3px 10px; border-radius: 6px; cursor: pointer;" onclick="copyPromoCode()">30zwxb Copy &gt;&gt;</span>
+            </div>
+            <div style="font-size: 11px; font-weight: 700; color: #64748b; margin-top: 10px;">Share your referral link and start earning</div>
+            <div class="team-referral-box">
+                <input type="text" id="ref-link" readonly style="font-size: 10.5px; background: transparent; border: none; width: 80%; font-weight: 700; color: #1e293b; outline: none;">
+                <span style="font-size: 11px; font-weight: 800; color: #d97706; cursor: pointer;" onclick="copyRefLink()">Copy &gt;&gt;</span>
+            </div>
+            <div class="team-social-icons">
+                <i class="fa-brands fa-x-twitter" onclick="showToast('Shared to X')"></i>
+                <i class="fa-brands fa-facebook" onclick="showToast('Shared to Facebook')"></i>
+                <i class="fa-brands fa-telegram" onclick="showToast('Shared to Telegram')"></i>
+                <i class="fa-brands fa-linkedin" onclick="showToast('Shared to LinkedIn')"></i>
+                <i class="fa-brands fa-whatsapp" onclick="showToast('Shared to WhatsApp')"></i>
+            </div>
+        </div>
+
+        <!-- TEAM STATISTICS BANNER -->
+        <div class="team-stats-grid">
+            <div class="tstat-col"><span class="tstat-lbl">Team size</span><span class="tstat-val" id="tstat-size">0</span></div>
+            <div class="tstat-col"><span class="tstat-lbl">Team recharge</span><span class="tstat-val" id="tstat-recharge">$0.00</span></div>
+            <div class="tstat-col"><span class="tstat-lbl">Team Withdrawal</span><span class="tstat-val" id="tstat-withdrawal">$0.00</span></div>
+        </div>
+    </div>  
+
+    <!-- TAB 4: VIP / INDIVIDUAL PLANS UNLOCK LIST -->
+    <div id="tab-vip" class="tab-content">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 16px 0 10px 0;">
+            <h2 class="title-header" style="margin: 0;">VIP Levels</h2>
+            <span style="font-size: 11px; font-weight: 700; color: #372652; cursor: pointer;" onclick="showToast('Upgrade log: Active')">Upgrade log</span>
+        </div>
+        <div class="vip-list-container" id="vip-levels-wrapper"></div>
+    </div>
+
+    <!-- TAB 5: ME / PROFILE -->
+    <div id="tab-me" class="tab-content">  
+        <div class="me-header-box">
+            <div class="me-top-row">
+                <div class="me-user-info">
+                    <div class="me-user-avatar"><i class="fa-solid fa-user"></i></div>
+                    <div class="me-user-meta">
+                        <h3 id="profile-username">User</h3>
+                        <span id="profile-id">ID: ---</span>
+                    </div>
+                </div>
+                <div class="user-badge-pill" id="profile-vip-txt">VIP-1</div>
+            </div>
+        </div>
+
+        <div class="me-stats-banner">
+            <div class="me-stat-col">
+                <span class="me-stat-lbl">Withdrawable (USDT)</span>
+                <span class="me-stat-val" id="me-total-bal">0.00</span>
+            </div>
+            <div class="me-stat-col">
+                <span class="me-stat-lbl">Recharge amount (USDT)</span>
+                <span class="me-stat-val" id="me-recharge-amt">0.00</span>
+            </div>
+        </div>
+
+        <div class="me-actions-grid">
+            <div class="me-action-btn" onclick="switchTab('recharge')">
+                <div class="me-act-icon"><i class="fa-solid fa-wallet"></i></div>
+                <div class="me-act-label">Recharge</div>
+            </div>
+            <div class="me-action-btn" onclick="switchTab('withdraw')">
+                <div class="me-act-icon"><i class="fa-solid fa-money-bill-transfer"></i></div>
+                <div class="me-act-label">Withdraw</div>
+            </div>
+        </div>
+    </div>  
+
+    <!-- ADMIN PANEL TAB (Visible only to Admin ID: 7482625921) -->
+    <div id="tab-admin" class="tab-content">
+        <h2 class="title-header"><i class="fa-solid fa-shield-halved"></i> Admin Control Panel</h2>
+        <div style="background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 16px; text-align: left;">
+            <div style="font-size: 13px; font-weight: 800; color: #372652; margin-bottom: 12px;">Pending User Requests</div>
+            <div id="admin-requests-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
+        </div>
+    </div>
+
+    <!-- RECHARGE / DEPOSIT TAB -->
+    <div id="tab-recharge" class="tab-content">
+        <h2 class="title-header">Deposit & Recharge</h2>
+        <div style="background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 16px; text-align: left;">
+            <span style="font-size: 11px; font-weight: 800; color: #64748b;">Enter Recharge Amount ($ USD)</span>
+            <input type="number" id="recharge-usd-input" min="10" value="10" style="width: 100%; padding: 12px; margin: 6px 0 14px 0; border-radius: 10px; border: 1px solid var(--border);">
+            
+            <span style="font-size: 11px; font-weight: 800; color: #64748b;">Transaction Hash (TxID)</span>
+            <input type="text" id="recharge-txid" placeholder="Paste TxID after payment..." style="width: 100%; padding: 12px; margin: 6px 0 14px 0; border-radius: 10px; border: 1px solid var(--border);">
+
+            <button class="ap-btn" style="width: 100%; border-radius: 10px;" onclick="submitRechargeRequest()">Submit Recharge</button>
+        </div>
+    </div>
+
+    <!-- WITHDRAW TAB -->
+    <div id="tab-withdraw" class="tab-content">
+        <h2 class="title-header">Withdraw</h2>
+        <div style="background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 16px; text-align: left;">
+            <div style="background: #f1f5f9; border-radius: 12px; padding: 14px; margin-bottom: 14px;">
+                <div style="font-size: 11px; font-weight: 700; color: #64748b;">Total balance</div>
+                <div style="font-size: 24px; font-weight: 800; color: #1e293b;"><span id="withdraw-avail-bal">0.00</span> USDT</div>
+            </div>
+            <input type="text" id="withdraw-addr" placeholder="Withdrawal Address" style="width: 100%; padding: 12px; border-radius: 10px; border: none; background: #5b5575; color: #fff; margin-bottom: 12px;">
+            <input type="number" id="withdraw-amount-input" placeholder="Amount ($ USD)" min="6" style="width: 100%; padding: 12px; border-radius: 10px; border: none; background: #5b5575; color: #fff; margin-bottom: 14px;">
+            <button class="ap-btn" style="width: 100%; border-radius: 12px; background: #372652; padding: 14px;" onclick="requestWithdrawal()">Confirm Withdrawal</button>
+        </div>
+    </div>
+
+    <!-- BOTTOM NAVIGATION -->
+    <nav class="bottom-nav">  
+        <a class="nav-item active" id="nav-home" onclick="switchTab('home')"><i class="fa-solid fa-house"></i><span>Home</span></a>  
+        <a class="nav-item" id="nav-task" onclick="switchTab('task')"><i class="fa-solid fa-list-check"></i><span>Task</span></a>  
+        <a class="nav-item" id="nav-team" onclick="switchTab('team')"><i class="fa-solid fa-users"></i><span>Team</span></a>  
+        <a class="nav-item" id="nav-vip" onclick="switchTab('vip')"><i class="fa-solid fa-crown"></i><span>VIP</span></a>  
+        <a class="nav-item" id="nav-me" onclick="switchTab('me')"><i class="fa-solid fa-user"></i><span>Me</span></a>  
+    </nav>  
+</div>  
+
+<script>  
+    let tg = window.Telegram?.WebApp;  
+    if (tg && typeof tg.expand === 'function') { tg.expand(); }
+
+    let telegramUser = tg?.initDataUnsafe?.user;
+    let userId = telegramUser?.id ? String(telegramUser.id) : "7482625921";  
+    let username = telegramUser?.username ? "@" + telegramUser.username : "User";  
+
+    const ADMIN_ID = "7482625921";
+    let isAdmin = (userId === ADMIN_ID);
+    if (isAdmin) {
+        document.getElementById('floating-admin-btn').style.display = 'flex';
+    }
+
+    document.getElementById('profile-username').innerText = username;  
+    document.getElementById('profile-id').innerText = `ID: ${userId}`;  
+    document.getElementById('user-id-text').innerText = `ID: ${userId}`;  
+    document.getElementById('ref-link').value = `https://t.me/UnitedPayTg_bot?start=${userId}`;
+
+    let userData = { balance: 0, rechargePool: 0, totalRecharge: 0, unlockedPlans: [1], completedTasks: [], wheelChances: 1 };
+
+    const vipPlans = [
+        { level: 1, title: "VIP-1", unlock: 0, daily: 1.00, totalProfit: 365.00, img: "https://i.ibb.co/JR4RRkb7/file-00000000abd481f48234067ed5a24c85.png" },
+        { level: 2, title: "VIP-2", unlock: 10, daily: 6.00, totalProfit: 2190.00, img: "https://i.ibb.co/JR4RRkb7/file-00000000abd481f48234067ed5a24c85.png" },
+        { level: 3, title: "VIP-3", unlock: 30, daily: 20.00, totalProfit: 7300.00, img: "https://i.ibb.co/JR4RRkb7/file-00000000abd481f48234067ed5a24c85.png" }
+    ];
+
+    async function fetchUserData() {
+        try {
+            let res = await fetch('/api/me', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-user-id': userId }
+            });
+            let data = await res.json();
+            if (data.ok) {
+                userData = data.data;
+                updateUIValues();
+            }
+        } catch (e) {
+            console.error('Fetch user error:', e);
+        }
+    }
+
+    function updateUIValues() {
+        document.getElementById('main-balance').innerText = userData.balance.toFixed(2);
+        document.getElementById('withdraw-avail-bal').innerText = userData.balance.toFixed(2);
+        document.getElementById('me-total-bal').innerText = userData.balance.toFixed(2);
+        document.getElementById('recharge-pool-balance').innerText = userData.rechargePool.toFixed(2);
+        document.getElementById('me-recharge-amt').innerText = userData.totalRecharge.toFixed(2);
+        document.getElementById('lw-chances-count').innerText = userData.wheelChances || 1;
+        
+        let highestVip = Math.max(...(userData.unlockedPlans || [1]));
+        document.getElementById('user-vip-badge').innerText = `VIP-${highestVip}`;
+        document.getElementById('profile-vip-txt').innerText = `VIP-${highestVip}`;
+
+        renderPlans();
+        renderTaskHall();
+    }
+
+    function renderTaskHall() {
+        let wrapper = document.getElementById('task-list-wrapper');
+        if (!wrapper) return;
+        wrapper.innerHTML = '';
+
+        let eligiblePlans = vipPlans.filter(p => (userData.unlockedPlans || [1]).includes(p.level));
+        document.getElementById('task-total-count').innerText = eligiblePlans.length;
+        document.getElementById('task-rem-count').innerText = eligiblePlans.length - (userData.completedTasks || []).length;
+
+        eligiblePlans.forEach(p => {
+            let isDone = (userData.completedTasks || []).includes(p.level);
+            wrapper.innerHTML += `
+                <div class="task-item-card">
+                    <img src="${p.img}" class="task-item-thumb">
+                    <div class="task-item-details">
+                        <div class="task-item-title">UnitedPay (${p.title})</div>
+                        <div class="task-item-row"><span>Income</span> <b class="green-val">+${p.daily.toFixed(2)} USDT</b></div>
+                        ${isDone 
+                            ? `<button class="to-complete-btn done-btn">Completed ✓</button>`
+                            : `<button class="to-complete-btn" onclick="completeTask(${p.level}, ${p.daily})">To complete</button>`
+                        }
+                    </div>
+                </div>`;
+        });
+    }
+
+    async function completeTask(level, reward) {
+        let res = await fetch('/api/task/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+            body: JSON.stringify({ level, reward })
+        });
+        let data = await res.json();
+        if (data.ok) {
+            showActionPopup('success', 'Claimed', `+$${reward.toFixed(2)} USDT added!`);
+            fetchUserData();
+        } else {
+            showToast(data.error);
+        }
+    }
+
+    function renderPlans() {
+        let vipContainer = document.getElementById('vip-levels-wrapper');
+        if(!vipContainer) return;
+        vipContainer.innerHTML = '';
+        vipPlans.forEach(p => {
+            let isUnlocked = (userData.unlockedPlans || [1]).includes(p.level);
+            vipContainer.innerHTML += `
+                <div class="vip-card-item">
+                    <div class="vip-card-header ${isUnlocked ? 'active-vip' : ''}">${p.title} ${isUnlocked ? '• Active' : ''}</div>
+                    <div class="vip-card-body">
+                        <img src="${p.img}" class="vip-card-thumb">
+                        <div class="vip-details-table">
+                            <div class="vip-row-line"><span>Daily profit</span> <b class="val-green">${p.daily.toFixed(2)} USDT</b></div>
+                            <div class="vip-row-line"><span>Total profit</span> <b>${p.totalProfit.toFixed(2)} USDT</b></div>
+                        </div>
+                    </div>
+                    <div class="vip-card-footer">
+                        <button class="unlock-vip-btn ${isUnlocked ? 'activated' : ''}" onclick="unlockVip(${p.level}, ${p.unlock})">
+                            ${isUnlocked ? 'Unlocked ✓' : `${p.unlock}.00 USDT Unlock`}
+                        </button>
+                    </div>
+                </div>`;
+        });
+    }
+
+    async function unlockVip(level, unlockAmount) {
+        let res = await fetch('/api/vip/unlock', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+            body: JSON.stringify({ level, unlockAmount })
+        });
+        let data = await res.json();
+        if (data.ok) {
+            showActionPopup('success', 'Unlocked', `VIP-${level} unlocked!`);
+            fetchUserData();
+        } else {
+            showActionPopup('error', 'Failed', data.error);
+        }
+    }
+
+    async function submitRechargeRequest() {
+        let amount = parseFloat(document.getElementById('recharge-usd-input').value);
+        let txid = document.getElementById('recharge-txid').value.trim();
+        if(!amount || !txid) { showToast('Enter amount and TxID'); return; }
+
+        let res = await fetch('/api/recharge/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+            body: JSON.stringify({ amount, txid })
+        });
+        let data = await res.json();
+        if (data.ok) {
+            showActionPopup('success', 'Submitted', 'Recharge sent to admin.');
+            switchTab('home');
+        }
+    }
+
+    async function requestWithdrawal() {
+        let amount = parseFloat(document.getElementById('withdraw-amount-input').value);
+        let address = document.getElementById('withdraw-addr').value.trim();
+        if(!amount || !address) { showToast('Enter amount and address'); return; }
+
+        let res = await fetch('/api/withdraw/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+            body: JSON.stringify({ amount, address })
+        });
+        let data = await res.json();
+        if (data.ok) {
+            showActionPopup('success', 'Submitted', 'Withdrawal requested.');
+            fetchUserData();
+            switchTab('home');
+        } else {
+            showToast(data.error);
+        }
+    }
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        let targetTab = document.getElementById('tab-' + tabId);
+        if(targetTab) targetTab.classList.add('active');
+        let targetNav = document.getElementById('nav-' + tabId);
+        if(targetNav) targetNav.classList.add('active');
+    }
+
+    function showToast(msg) {
+        let toast = document.getElementById('toast-notification');
+        document.getElementById('toast-msg').innerText = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    function showActionPopup(type, title, message) {
+        document.getElementById('ap-title').innerText = title;
+        document.getElementById('ap-msg').innerText = message;
+        document.getElementById('action-popup').classList.add('active');
+    }
+    function closeActionPopup() { document.getElementById('action-popup').classList.remove('active'); }
+    function closeAnnouncement() { document.getElementById('announcement-modal').classList.remove('active'); }
+    function openAnnouncementModal() { document.getElementById('announcement-modal').classList.add('active'); }
+    function openLuckyWheel() { document.getElementById('lucky-wheel-modal').classList.add('active'); }
+    function closeLuckyWheel() { document.getElementById('lucky-wheel-modal').classList.remove('active'); }
+    function openTelegramChannel() { window.open('https://t.me/UnitedPayTg_bot', '_blank'); }
+    function openSupportChat() { window.open('https://t.me/UnitedPayTg_bot', '_blank'); }
+    function openAppDownloadModal() { showActionPopup('success', 'App', 'Available on official bot channel.'); }
+    function openCompanyProfileModal() { showActionPopup('success', 'Profile', 'UnitedPay Global.'); }
+    function copyRefLink() { navigator.clipboard.writeText(document.getElementById('ref-link').value); showToast('Copied!'); }
+
+    window.addEventListener('load', () => {
+        fetchUserData();
+        setTimeout(() => {
+            let splash = document.getElementById('splash-screen');
+            if(splash) { splash.style.opacity = '0'; setTimeout(() => splash.remove(), 500); }
+        }, 1200);
+    });
+</script>  
+</body>  
+</html>
