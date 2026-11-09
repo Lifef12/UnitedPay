@@ -1,44 +1,44 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const cors = require('cors');
 const app = express();
 
 // ================== SETTINGS ==================
-const BOT_TOKEN = "9105730060:AAEwFpaNJ7ZsV-aOEUDH3CyY2jpbjG9oWqc";
+const BOT_TOKEN = "9107042388:AAFv0PnNLBlHiGfcX4Xd09TghNuwOojFcpU";
 const ADMIN_ID = "7482625921";
-const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
+const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/unitedpay';
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "nbx12345";
-const VERCEL_APP_URL = process.env.VERCEL_APP_URL || "https://unitedpay-app.vercel.app/";
 
 // ================== MINING & VIP RULES ==================
-const PLAN_DURATION_MS = 365 * 24 * 60 * 60 * 1000; // 365 Days validity as per UnitedPay UI
+const PLAN_DURATION_MS = 365 * 24 * 60 * 60 * 1000; // Valid for 365 days
 
 let bnbPriceCache = { price: 620, time: 0 };
 async function getBnbPrice() {
     if (Date.now() - bnbPriceCache.time < 60000) return bnbPriceCache.price;
     try {
-        const r = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=USDTUSDT');
+        const r = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT');
         const d = await r.json();
-        const p = 1.0; // USDT stable price peg
+        const p = parseFloat(d.price);
         if (p > 0) { bnbPriceCache = { price: p, time: Date.now() }; return p; }
     } catch (e) {}
-    return 1.0;
+    return bnbPriceCache.price;
 }
 
-// ================== DATABASE SCHEMA ==================
+// ================== DATABASE ==================
 mongoose.connect(MONGO_URI)
-    .then(() => console.log('✅ Connected to MongoDB Atlas Successfully!'))
+    .then(() => console.log('✅ Connected to MongoDB Successfully!'))
     .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
 const userSchema = new mongoose.Schema({
     id: { type: String, required: true, unique: true },
     username: { type: String, default: 'User' },
-    balance: { type: Number, default: 0 },
-    rechargePool: { type: Number, default: 0 },
+    balance: { type: Number, default: 0 },          // Withdrawable Balance ($ USDT)
+    rechargePool: { type: Number, default: 0 },     // Recharge Amount Pool ($ USDT)
     totalRecharge: { type: Number, default: 0 },
     totalWithdrawn: { type: Number, default: 0 },
-    unlockedPlans: { type: Array, default: [1] }, // Default VIP-1 unlocked
+    unlockedPlans: { type: Array, default: [1] },     // Default VIP-1 unlocked
     deposits: { type: Array, default: [] },
     withdrawals: { type: Array, default: [] },
     isBanned: { type: Boolean, default: false },
@@ -58,17 +58,18 @@ const User = mongoose.model('User', userSchema);
 
 const pendingRequestSchema = new mongoose.Schema({
     reqId: { type: String, required: true, unique: true },
-    type: { type: String, required: true }, // 'Recharge' or 'Withdrawal'
+    type: { type: String, required: true }, // 'deposit' or 'withdraw'
     userId: { type: String, required: true },
     amount: { type: Number, required: true },
     txHash: { type: String },
     address: { type: String },
-    status: { type: String, default: 'Pending' }
+    status: { type: String, default: 'PENDING' }
 });
 const PendingRequest = mongoose.model('PendingRequest', pendingRequestSchema);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cors());
 
 app.use((req, res, next) => {
     req.cookies = {};
@@ -79,14 +80,6 @@ app.use((req, res, next) => {
             req.cookies[parts.shift().trim()] = decodeURIComponent(parts.join('='));
         });
     }
-    next();
-});
-
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    if (req.method === 'OPTIONS') return res.sendStatus(204);
     next();
 });
 
@@ -125,7 +118,7 @@ async function sendTelegramPhoto(chatId, photoUrl, caption = '', replyMarkup = n
             body: JSON.stringify(body)
         });
     } catch (e) {
-        console.log("Telegram Photo Broadcast Error:", e);
+        console.log("Telegram Photo Error:", e);
     }
 }
 
@@ -155,6 +148,106 @@ async function answerCallbackQuery(callbackQueryId, text) {
     }
 }
 
+// Referral Commission distributor (11% - 2% - 1%)
+async function payReferralCommissions(depositUser, usdtAmount) {
+    const rates = [0.11, 0.02, 0.01];
+    let current = depositUser;
+    const depositingUserId = depositUser.id;
+
+    for (let lvl = 1; lvl <= 3; lvl++) {
+        if (!current.referredBy) break;
+        const refUser = await User.findOne({ id: current.referredBy });
+        if (!refUser) break;
+
+        const commUsdt = usdtAmount * rates[lvl - 1];
+        refUser.balance += commUsdt;
+        refUser.refEarnings[`level${lvl}`] = (refUser.refEarnings[`level${lvl}`] || 0) + commUsdt;
+        refUser.markModified('refEarnings');
+
+        if (!refUser.referrals[`level${lvl}`]) {
+            refUser.referrals[`level${lvl}`] = [];
+        }
+        
+        let refList = refUser.referrals[`level${lvl}`];
+        let existingRefIndex = refList.findIndex(r => (typeof r === 'string' ? r === depositingUserId : r.id === depositingUserId));
+
+        if (existingRefIndex === -1) {
+            refList.push({ id: depositingUserId, joinedDate: 'Active', bonusEarned: commUsdt });
+        } else {
+            refList[existingRefIndex].bonusEarned = (Number(refList[existingRefIndex].bonusEarned) || 0) + commUsdt;
+        }
+        refUser.markModified(`referrals.level${lvl}`);
+        await refUser.save();
+
+        sendTelegramMessage(refUser.id, `🎁 Received +$${commUsdt.toFixed(2)} USDT (${rates[lvl - 1] * 100}% Level ${lvl} Team Commission)!`);
+        current = refUser;
+    }
+}
+
+async function approveRequest(reqDoc, u, reqId) {
+    if (reqDoc.type === 'deposit' && u) {
+        const depAmount = Number(reqDoc.amount);
+        u.rechargePool += depAmount;
+        u.totalRecharge += depAmount;
+        
+        u.deposits.unshift({
+            id: reqId,
+            type: 'Recharge',
+            amount: depAmount,
+            date: new Date().toLocaleString(),
+            status: 'Approved',
+            txHash: reqDoc.txHash
+        });
+        u.markModified('deposits');
+        await u.save();
+
+        await payReferralCommissions(u, depAmount);
+        sendTelegramMessage(reqDoc.userId, `✅ Your deposit of $${depAmount} USDT has been approved and added to your recharge pool!`);
+    } else if (reqDoc.type === 'withdraw' && u) {
+        u.totalWithdrawn = Number(u.totalWithdrawn || 0) + Number(reqDoc.amount);
+        u.withdrawals.unshift({
+            id: reqId,
+            type: 'Withdrawal',
+            amount: -Number(reqDoc.amount),
+            date: new Date().toLocaleString(),
+            status: 'Approved',
+            address: reqDoc.address
+        });
+        u.markModified('withdrawals');
+        await u.save();
+        sendTelegramMessage(reqDoc.userId, `✅ Your withdrawal of $${reqDoc.amount} USDT has been approved!`);
+    }
+}
+
+async function rejectRequest(reqDoc, u, reqId) {
+    if (reqDoc.type === 'deposit' && u) {
+        u.deposits.unshift({
+            id: reqId,
+            type: 'Recharge',
+            amount: reqDoc.amount,
+            date: new Date().toLocaleString(),
+            status: 'Rejected',
+            txHash: reqDoc.txHash
+        });
+        u.markModified('deposits');
+        await u.save();
+        sendTelegramMessage(reqDoc.userId, `❌ Your deposit request of $${reqDoc.amount} USDT was declined.`);
+    } else if (reqDoc.type === 'withdraw' && u) {
+        u.balance += Number(reqDoc.amount); // Refund balance
+        u.withdrawals.unshift({
+            id: reqId,
+            type: 'Withdrawal',
+            amount: -Number(reqDoc.amount),
+            date: new Date().toLocaleString(),
+            status: 'Rejected',
+            address: reqDoc.address
+        });
+        u.markModified('withdrawals');
+        await u.save();
+        sendTelegramMessage(reqDoc.userId, `❌ Your withdrawal request was declined and funds refunded to your balance.`);
+    }
+}
+
 // ================== TELEGRAM WEBHOOK ==================
 async function handleWebhookLogic(req, res) {
     const update = req.body;
@@ -168,7 +261,7 @@ async function handleWebhookLogic(req, res) {
 
             let user = await User.findOne({ id: chatId });
             if (user && user.isBanned) {
-                await sendTelegramMessage(chatId, "⚠️ *Access Denied:* Your account has been banned by the admin.");
+                await sendTelegramMessage(chatId, "⚠️ *Access Denied:* Your account has been banned.");
                 return;
             }
 
@@ -188,12 +281,25 @@ async function handleWebhookLogic(req, res) {
                     await user.save();
                 }
 
-                const welcomeCaption = `🎉 *Welcome to UnitedPay - AI Investment & Cloud Mining!*\n\nInvest daily, complete tasks, invite friends, and enjoy high-yield automated returns.`;
+                if (user.referredBy) {
+                    const l1Id = user.referredBy;
+                    let refL1User = await User.findOne({ id: l1Id });
+                    if (refL1User) {
+                        let exists = refL1User.referrals.level1.some(r => (typeof r === 'string' ? r === chatId : r.id === chatId));
+                        if (!exists) {
+                            refL1User.referrals.level1.push({ id: chatId, joinedDate: 'Active', bonusEarned: 0 });
+                            refL1User.markModified('referrals.level1');
+                            await refL1User.save();
+                        }
+                    }
+                }
+
+                const welcomeCaption = `🎉 *Welcome to UnitedPay Investment Platform!*\n\nSecure cloud mining & AI-backed high-yield returns. Invest & earn daily! 🚀`;
                 const startPhotoUrl = "https://i.ibb.co/JR4RRkb7/file-00000000abd481f48234067ed5a24c85.png";
 
                 const webAppMarkup = {
                     inline_keyboard: [
-                        [{ text: "🚀 Open UnitedPay App", web_app: { url: VERCEL_APP_URL } }],
+                        [{ text: "🚀 Open UnitedPay App", web_app: { url: process.env.RENDER_EXTERNAL_URL || "https://your-app.onrender.com" } }],
                         [{ text: "📢 Official Channel", url: "https://t.me/UnitedPayBot" }]
                     ]
                 };
@@ -206,9 +312,9 @@ async function handleWebhookLogic(req, res) {
             const data = query.data;
             const messageId = query.message.message_id;
 
-            if (data.startsWith('approve_') || data.startsWith('reject_')) {
-                if (chatId !== String(ADMIN_ID)) return answerCallbackQuery(query.id, "Unauthorized!");
+            if (chatId !== String(ADMIN_ID)) return answerCallbackQuery(query.id, "Unauthorized!");
 
+            if (data.startsWith('approve_') || data.startsWith('reject_')) {
                 const isApprove = data.startsWith('approve_');
                 const reqId = data.replace(isApprove ? 'approve_' : 'reject_', '');
 
@@ -218,36 +324,10 @@ async function handleWebhookLogic(req, res) {
                 const u = await User.findOne({ id: reqDoc.userId });
 
                 if (isApprove) {
-                    reqDoc.status = 'Approved';
-                    if (reqDoc.type === 'Recharge' && u) {
-                        u.rechargePool += reqDoc.amount;
-                        u.totalRecharge += reqDoc.amount;
-                        u.deposits.unshift({ id: reqId, amount: reqDoc.amount, txHash: reqDoc.txHash, status: 'Approved', date: new Date().toLocaleString() });
-                        u.markModified('deposits');
-                        await u.save();
-                        sendTelegramMessage(reqDoc.userId, `✅ Your recharge of $${reqDoc.amount} USDT has been approved and added to your recharge pool!`);
-                    } else if (reqDoc.type === 'Withdrawal' && u) {
-                        u.totalWithdrawn += reqDoc.amount;
-                        u.withdrawals.unshift({ id: reqId, amount: reqDoc.amount, address: reqDoc.address, status: 'Approved', date: new Date().toLocaleString() });
-                        u.markModified('withdrawals');
-                        await u.save();
-                        sendTelegramMessage(reqDoc.userId, `✅ Your withdrawal of $${reqDoc.amount} USDT has been approved and sent!`);
-                    }
+                    await approveRequest(reqDoc, u, reqId);
                     editTelegramMessage(chatId, messageId, `✅ **Request Approved**\nUser ID: ${reqDoc.userId}\nAmount: $${reqDoc.amount}`);
                 } else {
-                    reqDoc.status = 'Rejected';
-                    if (reqDoc.type === 'Withdrawal' && u) {
-                        u.balance += reqDoc.amount; // Refund balance
-                        u.withdrawals.unshift({ id: reqId, amount: reqDoc.amount, address: reqDoc.address, status: 'Rejected', date: new Date().toLocaleString() });
-                        u.markModified('withdrawals');
-                        await u.save();
-                        sendTelegramMessage(reqDoc.userId, `❌ Your withdrawal request of $${reqDoc.amount} USDT was rejected and funds refunded.`);
-                    } else if (reqDoc.type === 'Recharge' && u) {
-                        u.deposits.unshift({ id: reqId, amount: reqDoc.amount, txHash: reqDoc.txHash, status: 'Rejected', date: new Date().toLocaleString() });
-                        u.markModified('deposits');
-                        await u.save();
-                        sendTelegramMessage(reqDoc.userId, `❌ Your recharge request of $${reqDoc.amount} USDT was rejected.`);
-                    }
+                    await rejectRequest(reqDoc, u, reqId);
                     editTelegramMessage(chatId, messageId, `❌ **Request Rejected**\nUser ID: ${reqDoc.userId}\nAmount: $${reqDoc.amount}`);
                 }
                 answerCallbackQuery(query.id, "Done!");
@@ -259,29 +339,25 @@ async function handleWebhookLogic(req, res) {
 }
 
 app.post(`/api/webhook/${BOT_TOKEN}`, handleWebhookLogic);
-app.post('/webhook', handleWebhookLogic);
-
-app.get('/', (req, res) => {
-    res.send(`<h1>UnitedPay Backend Active</h1><p>Running successfully.</p>`);
-});
 
 // ================== MINI APP API ENDPOINTS ==================
 app.get('/api/user/:userId', async (req, res) => {
     const userId = String(req.params.userId);
     let user = await User.findOne({ id: userId });
+
     if (!user) {
-        user = new User({ id: userId, username: 'User' });
+        user = new User({ id: userId, username: req.query.username || 'User' });
         await user.save();
     }
-    if (user.isBanned) {
-        return res.status(403).json({ success: false, isBanned: true, message: "Account banned." });
-    }
-    res.json(user.toObject());
+
+    res.json({ success: true, user });
 });
 
 app.post('/api/deposit', async (req, res) => {
-    const { userId, amount, usdtAmount, txHash } = req.body;
-    if (!userId || !amount || !txHash) return res.status(400).json({ success: false, message: "Invalid data" });
+    const { userId, amount, txHash } = req.body;
+    if (!userId || !amount || !txHash) {
+        return res.status(400).json({ success: false, message: "Invalid deposit data." });
+    }
 
     let u = await User.findOne({ id: userId });
     if (!u) u = new User({ id: userId });
@@ -289,15 +365,15 @@ app.post('/api/deposit', async (req, res) => {
     const reqId = 'dep_' + Date.now();
     await PendingRequest.create({
         reqId,
-        type: 'Recharge',
+        type: 'deposit',
         userId,
         amount: parseFloat(amount),
-        txHash: txHash.trim(),
-        status: 'Pending'
+        txHash: String(txHash).trim(),
+        status: 'PENDING'
     });
 
     if (ADMIN_ID) {
-        const msgText = `📥 **New Recharge Request**\n\n👤 User ID: \`${userId}\`\n💰 Amount: **$${amount} USDT**\n🔑 TxHash: \`${txHash}\``;
+        const msgText = `📥 **New Deposit Request**\n\n👤 User ID: \`${userId}\`\n💰 Amount: **$${amount} USDT**\n🔑 TxHash: \`${txHash}\``;
         const inlineKeyboard = {
             inline_keyboard: [[
                 { text: "✅ Approve", callback_data: `approve_${reqId}` },
@@ -307,32 +383,36 @@ app.post('/api/deposit', async (req, res) => {
         await sendTelegramMessage(ADMIN_ID, msgText, inlineKeyboard);
     }
 
-    res.json({ success: true, message: "Recharge submitted successfully" });
+    res.json({ success: true, message: "Deposit request submitted successfully" });
 });
 
 app.post('/api/withdraw', async (req, res) => {
     const { userId, amount, address } = req.body;
     let amt = parseFloat(amount);
-    if (!userId || !amt || amt <= 0 || !address) return res.status(400).json({ success: false, message: "Invalid withdrawal data" });
+    if (!userId || !amt || amt < 6 || !address) {
+        return res.status(400).json({ success: false, message: "Minimum withdrawal is 6 USDT" });
+    }
 
     let u = await User.findOne({ id: userId });
-    if (!u || u.balance < amt) return res.status(400).json({ success: false, message: "Insufficient balance" });
+    if (!u || u.balance < amt) {
+        return res.status(400).json({ success: false, message: "Insufficient balance" });
+    }
 
-    u.balance -= amt; // Deduct temporarily
+    u.balance -= amt;
     await u.save();
 
     const reqId = 'wd_' + Date.now();
     await PendingRequest.create({
         reqId,
-        type: 'Withdrawal',
+        type: 'withdraw',
         userId,
         amount: amt,
-        address: address.trim(),
-        status: 'Pending'
+        address,
+        status: 'PENDING'
     });
 
     if (ADMIN_ID) {
-        const msgText = `📤 **New Withdrawal Request**\n\n👤 User ID: \`${userId}\`\n💰 Amount: **$${amt} USDT**\n🏦 Address: \`${address}\``;
+        const msgText = `📤 **New Withdraw Request**\n\n👤 User ID: \`${userId}\`\n💰 Amount: **$${amt} USDT**\n🏦 Address: \`${address}\``;
         const inlineKeyboard = {
             inline_keyboard: [[
                 { text: "✅ Approve", callback_data: `approve_${reqId}` },
@@ -342,7 +422,66 @@ app.post('/api/withdraw', async (req, res) => {
         await sendTelegramMessage(ADMIN_ID, msgText, inlineKeyboard);
     }
 
-    res.json({ success: true, message: "Withdrawal submitted successfully", newBalance: u.balance });
+    res.json({ success: true, message: "Withdrawal requested successfully", newBalance: u.balance });
+});
+
+// ================== ADMIN DASHBOARD ROUTES ==================
+app.get('/admin/login', (req, res) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head><title>Admin Login</title><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+        <body style="background:#0c0a09;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;font-family:sans-serif;">
+            <div style="background:#1c1917;padding:30px;border-radius:16px;width:320px;text-align:center;border:1px solid #292524;">
+                <h2 style="color:#38bdf8;">🔐 Admin Login</h2>
+                <form action="/admin/login" method="POST">
+                    <input type="text" name="username" placeholder="Username" required style="width:100%;padding:10px;margin-bottom:10px;background:#0c0a09;border:1px solid #444;color:#fff;border-radius:6px;">
+                    <input type="password" name="password" placeholder="Password" required style="width:100%;padding:10px;margin-bottom:10px;background:#0c0a09;border:1px solid #444;color:#fff;border-radius:6px;">
+                    <button type="submit" style="width:100%;padding:10px;background:#38bdf8;border:none;font-weight:bold;border-radius:6px;cursor:pointer;">Login</button>
+                </form>
+            </div>
+        </body>
+        </html>
+    `);
+});
+
+app.post('/admin/login', (req, res) => {
+    const { username, password } = req.body;
+    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+        const sessionToken = "token_" + Math.random().toString(36).substring(2);
+        activeSessions.add(sessionToken);
+        res.setHeader('Set-Cookie', `admin_session=${sessionToken}; Path=/; HttpOnly; Max-Age=86400`);
+        return res.redirect('/admin/dashboard');
+    }
+    res.send(`<script>alert('Invalid Credentials!');location.href='/admin/login';</script>`);
+});
+
+app.get('/admin/dashboard', checkAdminAuth, async (req, res) => {
+    const requests = await PendingRequest.find({});
+    const totalUsers = await User.countDocuments();
+    
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head><title>Admin Dashboard - UnitedPay</title><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+        <body style="background:#0c0a09;color:#fff;padding:20px;font-family:sans-serif;">
+            <h1 style="color:#38bdf8;">👑 UnitedPay Admin Panel</h1>
+            <p>Total Registered Users: <b>${totalUsers}</b></p>
+            <h3>⏳ Pending User Requests (${requests.length})</h3>
+            ${requests.length === 0 ? '<p>No pending requests.</p>' : `
+                <table border="1" style="border-collapse:collapse;width:100%;text-align:left;border-color:#333;">
+                    <tr><th>Type</th><th>User ID</th><th>Amount</th><th>Details</th></tr>
+                    ${requests.map(r => `<tr>
+                        <td><b>${r.type.toUpperCase()}</b></td>
+                        <td>${r.userId}</td>
+                        <td>$${r.amount}</td>
+                        <td>${r.txHash || r.address}</td>
+                    </tr>`).join('')}
+                </table>
+            `}
+        </body>
+        </html>
+    `);
 });
 
 const PORT = process.env.PORT || 3000;
