@@ -19,7 +19,7 @@ const userSchema = new mongoose.Schema({
     id: { type: String, required: true, unique: true },
     username: { type: String, default: 'User' },
     balance: { type: Number, default: 0 },          // Withdrawable Balance ($ USDT)
-    rechargePool: { type: Number, default: 0 },     // Recharge Pool ($ USDT)
+    rechargePool: { type: Number, default: 0 },     // Recharge Amount Pool ($ USDT)
     totalRecharge: { type: Number, default: 0 },
     totalWithdrawn: { type: Number, default: 0 },
     unlockedPlans: { type: Array, default: [1] },     // Default VIP-1 unlocked
