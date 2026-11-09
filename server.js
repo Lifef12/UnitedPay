@@ -1,44 +1,102 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const crypto = require('crypto');
 const app = express();
 
 // ================== SETTINGS ==================
-const BOT_TOKEN = process.env.BOT_TOKEN || '';
-const ADMIN_ID = process.env.ADMIN_ID || '';
-const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/unitedpay';
+const BOT_TOKEN = "9107042388:AAFv0PnNLBlHiGfcX4Xd09TghNuwOojFcpU";
+const ADMIN_ID = "7482625921";
+const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
 
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change-me-now';
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "nbx12345";
+const VERCEL_APP_URL = "https://bnb-smart-miner-2.vercel.app/";
 
-if (!BOT_TOKEN) console.warn('⚠️ BOT_TOKEN env variable set nahi hai!');
-if (!ADMIN_ID) console.warn('⚠️ ADMIN_ID env variable set nahi hai!');
+// ================== MINING RULES ==================
+const PLAN_DURATION_MS = 10 * 24 * 60 * 60 * 1000;
+const PAID_RATE_PER_GHS_USD = 0.30;
+const FREE_DAILY_USD = 0.01;
 
-function escapeHtml(str) {
-    return String(str == null ? '' : str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+let bnbPriceCache = { price: 620, time: 0 };
+async function getBnbPrice() {
+    if (Date.now() - bnbPriceCache.time < 60000) return bnbPriceCache.price;
+    try {
+        const r = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT');
+        const d = await r.json();
+        const p = parseFloat(d.price);
+        if (p > 0) { bnbPriceCache = { price: p, time: Date.now() }; return p; }
+    } catch (e) {}
+    try {
+        const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd');
+        const d = await r.json();
+        const p = Number(d && d.binancecoin && d.binancecoin.usd);
+        if (p > 0) { bnbPriceCache = { price: p, time: Date.now() }; return p; }
+    } catch (e) {}
+    return bnbPriceCache.price;
+}
+
+function isPaidPlanActive(u, now = Date.now()) {
+    return u.planActive !== false && Number(u.ghs) > 0 && !(u.planExpiryDate > 0 && now >= u.planExpiryDate);
+}
+
+function dailyUsdRate(u, now = Date.now()) {
+    return isPaidPlanActive(u, now) ? Number(u.ghs) * PAID_RATE_PER_GHS_USD : FREE_DAILY_USD;
+}
+
+function accrueUsd(u, now = Date.now()) {
+    const last = Number(u.lastClaimTime) || now;
+    if (now <= last) return 0;
+    let usd = 0;
+    let cursor = last;
+    if (u.planActive !== false && Number(u.ghs) > 0) {
+        const paidEnd = (u.planExpiryDate > 0) ? Math.min(now, u.planExpiryDate) : now;
+        if (paidEnd > cursor) {
+            usd += ((paidEnd - cursor) / 1000) * (Number(u.ghs) * PAID_RATE_PER_GHS_USD / 86400);
+            cursor = paidEnd;
+        }
+    }
+    if (now > cursor) {
+        usd += ((now - cursor) / 1000) * (FREE_DAILY_USD / 86400);
+    }
+    return usd;
+}
+
+function settleAccrual(u, now = Date.now()) {
+    const accrued = accrueUsd(u, now);
+    u.accruedUsd = Number(u.accruedUsd || 0) + accrued;
+    u.totalMinedUsd = Number(u.totalMinedUsd || 0) + accrued;
+    u.lastClaimTime = now;
+}
+
+function expireUserPlan(u, now = Date.now()) {
+    settleAccrual(u, now);
+    u.ghs = 0;
+    u.planActive = false;
+    u.planExpiryDate = 0;
+    u.planStartDate = 0;
 }
 
 // ================== DATABASE ==================
 mongoose.connect(MONGO_URI)
-    .then(() => console.log('✅ Connected to MongoDB Successfully!'))
+    .then(async () => {
+        console.log('✅ Connected to MongoDB Atlas Successfully!');
+    })
     .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
 const userSchema = new mongoose.Schema({
     id: { type: String, required: true, unique: true },
     username: { type: String, default: 'User' },
     balance: { type: Number, default: 0 },
-    rechargePool: { type: Number, default: 0 },
-    totalRecharge: { type: Number, default: 0 },
-    totalWithdrawn: { type: Number, default: 0 },
-    unlockedPlans: { type: Array, default: [1] },
+    totalMinedUsd: { type: Number, default: 0 },
+    totalWithdrawnBnb: { type: Number, default: 0 },
+    ghs: { type: Number, default: 0 },
+    lastClaimTime: { type: Number, default: Date.now },
+    accruedUsd: { type: Number, default: 0 },
     deposits: { type: Array, default: [] },
     withdrawals: { type: Array, default: [] },
     isBanned: { type: Boolean, default: false },
+    planActive: { type: Boolean, default: true },
+    planStartDate: { type: Number, default: 0 },
+    planExpiryDate: { type: Number, default: 0 },
     referredBy: { type: String, default: null },
     referrals: {
         level1: { type: Array, default: [] },
@@ -57,24 +115,17 @@ const pendingRequestSchema = new mongoose.Schema({
     reqId: { type: String, required: true, unique: true },
     type: { type: String, required: true },
     userId: { type: String, required: true },
-    amount: { type: Number, required: true },
+    amount: { type: String, required: true },
+    usdtAmount: { type: Number, default: 1 },
+    coin: { type: String },
     txHash: { type: String },
     address: { type: String },
     status: { type: String, default: 'PENDING' }
 });
 const PendingRequest = mongoose.model('PendingRequest', pendingRequestSchema);
 
-// ================== MIDDLEWARE ==================
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    if (req.method === 'OPTIONS') return res.sendStatus(204);
-    next();
-});
 
 app.use((req, res, next) => {
     req.cookies = {};
@@ -85,6 +136,14 @@ app.use((req, res, next) => {
             req.cookies[parts.shift().trim()] = decodeURIComponent(parts.join('='));
         });
     }
+    next();
+});
+
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
     next();
 });
 
@@ -109,7 +168,7 @@ async function sendTelegramMessage(chatId, text, replyMarkup = null) {
             body: JSON.stringify(body)
         });
     } catch (e) {
-        console.log('Telegram API Error:', e);
+        console.log("Telegram API Error:", e);
     }
 }
 
@@ -123,14 +182,61 @@ async function sendTelegramPhoto(chatId, photoUrl, caption = '', replyMarkup = n
             body: JSON.stringify(body)
         });
     } catch (e) {
-        console.log('Telegram Photo Error:', e);
+        console.log("Telegram Photo Error:", e);
     }
 }
 
-// ================== REFERRALS ==================
+async function editTelegramMessage(chatId, messageId, text, replyMarkup = null) {
+    try {
+        let body = { chat_id: chatId, message_id: messageId, text: text, parse_mode: 'Markdown' };
+        if (replyMarkup) body.reply_markup = replyMarkup;
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+    } catch (e) {
+        console.log("Telegram Edit Error:", e);
+    }
+}
+
+async function answerCallbackQuery(callbackQueryId, text) {
+    try {
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ callback_query_id: callbackQueryId, text: text })
+        });
+    } catch (e) {
+        console.log("Callback Answer Error:", e);
+    }
+}
+
+function getPlanDaysFormat(user) {
+    if (!user.planActive || user.ghs <= 0) return "N/A";
+    let startTimestamp = user.planStartDate || Date.now();
+    const now = Date.now();
+    const elapsed = now - startTimestamp;
+    let daysPassed = Math.floor(elapsed / (1000 * 60 * 60 * 24)) + 1;
+    if (daysPassed > 10) daysPassed = 10;
+    if (daysPassed < 1) daysPassed = 1;
+    return `${daysPassed}/10 Days`;
+}
+
+function setRequestStatus(list, reqId, pendingNames, newStatus) {
+    let idx = list.findIndex(x => String(x.id) === String(reqId));
+    if (idx !== -1) {
+        list[idx].status = newStatus;
+    } else {
+        let p = list.find(x => pendingNames.includes(x.status));
+        if (p) p.status = newStatus;
+    }
+}
+
 async function payReferralCommissions(depositUser, usdtAmount) {
-    const rates = [0.11, 0.02, 0.01];
+    const rates = [0.15, 0.03, 0.01];
     let current = depositUser;
+    const bnbPrice = await getBnbPrice();
     const depositingUserId = depositUser.id;
 
     for (let lvl = 1; lvl <= 3; lvl++) {
@@ -139,76 +245,76 @@ async function payReferralCommissions(depositUser, usdtAmount) {
         if (!refUser) break;
 
         const commUsdt = usdtAmount * rates[lvl - 1];
-        refUser.balance += commUsdt;
-        refUser.refEarnings[`level${lvl}`] = (refUser.refEarnings[`level${lvl}`] || 0) + commUsdt;
+        const commBnb = commUsdt / bnbPrice;
+
+        refUser.balance += commBnb;
+        refUser.refEarnings[`level${lvl}`] = (refUser.refEarnings[`level${lvl}`] || 0) + commBnb;
         refUser.markModified('refEarnings');
 
         if (!refUser.referrals[`level${lvl}`]) {
             refUser.referrals[`level${lvl}`] = [];
         }
-
+        
         let refList = refUser.referrals[`level${lvl}`];
         let existingRefIndex = refList.findIndex(r => (typeof r === 'string' ? r === depositingUserId : r.id === depositingUserId));
 
-        if (existingRefIndex === -1) {
-            refList.push({ id: depositingUserId, joinedDate: 'Active', bonusEarned: commUsdt });
+        if (existingRefIndex !== -1) {
+            if (typeof refList[existingRefIndex] === 'string') {
+                refList[existingRefIndex] = { id: depositingUserId, joinedDate: 'Active', bonusEarned: commBnb };
+            } else {
+                refList[existingRefIndex].bonusEarned = (Number(refList[existingRefIndex].bonusEarned) || 0) + commBnb;
+            }
         } else {
-            refList[existingRefIndex].bonusEarned = (Number(refList[existingRefIndex].bonusEarned) || 0) + commUsdt;
+            refList.push({ id: depositingUserId, joinedDate: 'Active', bonusEarned: commBnb });
         }
         refUser.markModified(`referrals.level${lvl}`);
         await refUser.save();
 
-        sendTelegramMessage(refUser.id, `🎁 Received +$${commUsdt.toFixed(2)} USDT (${Math.round(rates[lvl - 1] * 100)}% Level ${lvl} Team Commission)!`);
+        sendTelegramMessage(refUser.id, `🎁 Received +${commBnb.toFixed(4)} BNB ($${commUsdt.toFixed(2)} USDT) (${rates[lvl - 1] * 100}% Level ${lvl} Referral Commission)!`);
         current = refUser;
     }
 }
 
-// ================== APPROVE / REJECT LOGIC ==================
 async function approveRequest(reqDoc, u, reqId) {
     if (reqDoc.type === 'deposit' && u) {
-        const depAmount = Number(reqDoc.amount);
-        u.rechargePool += depAmount;
-        u.totalRecharge += depAmount;
-
-        if (u.deposits && u.deposits.length > 0) {
-            let dItem = u.deposits.find(d => String(d.id) === String(reqId));
-            if (dItem) dItem.status = 'Approved';
-        }
+        const depAmount = reqDoc.usdtAmount ? Number(reqDoc.usdtAmount) : 1;
+        setRequestStatus(u.deposits, reqId, ['PENDING'], 'PAID');
         u.markModified('deposits');
-        await u.save();
 
+        const now = Date.now();
+        settleAccrual(u, now);
+
+        const hadPaidPlan = isPaidPlanActive(u, now);
+        u.ghs = hadPaidPlan ? Number(u.ghs) + depAmount : depAmount;
+        u.planActive = true;
+        u.planStartDate = now;
+        u.planExpiryDate = now + PLAN_DURATION_MS;
+
+        await u.save();
         await payReferralCommissions(u, depAmount);
-        sendTelegramMessage(reqDoc.userId, `✅ Your deposit of $${depAmount} USDT has been approved and added to your recharge pool!`);
+
+        sendTelegramMessage(reqDoc.userId, `✅ Your deposit of ${reqDoc.amount} has been approved!\n⚡ +${depAmount} GHS Mining Power added.`);
     } else if (reqDoc.type === 'withdraw' && u) {
-        u.totalWithdrawn = Number(u.totalWithdrawn || 0) + Number(reqDoc.amount);
-        if (u.withdrawals && u.withdrawals.length > 0) {
-            let wItem = u.withdrawals.find(w => String(w.id) === String(reqId));
-            if (wItem) wItem.status = 'Approved';
-        }
+        setRequestStatus(u.withdrawals, reqId, ['PENDING', 'PEND1NG'], 'PAID');
+        u.totalWithdrawnBnb = Number(u.totalWithdrawnBnb || 0) + parseFloat(reqDoc.amount || 0);
         u.markModified('withdrawals');
         await u.save();
-        sendTelegramMessage(reqDoc.userId, `✅ Your withdrawal of $${reqDoc.amount} USDT has been approved!`);
+        sendTelegramMessage(reqDoc.userId, `✅ Your withdrawal of ${reqDoc.amount} BNB has been approved!`);
     }
 }
 
 async function rejectRequest(reqDoc, u, reqId) {
     if (reqDoc.type === 'deposit' && u) {
-        if (u.deposits && u.deposits.length > 0) {
-            let dItem = u.deposits.find(d => String(d.id) === String(reqId));
-            if (dItem) dItem.status = 'Rejected';
-        }
+        setRequestStatus(u.deposits, reqId, ['PENDING'], 'DECLINED');
         u.markModified('deposits');
         await u.save();
-        sendTelegramMessage(reqDoc.userId, `❌ Your deposit request of $${reqDoc.amount} USDT was declined.`);
+        sendTelegramMessage(reqDoc.userId, `❌ Your deposit request was declined.`);
     } else if (reqDoc.type === 'withdraw' && u) {
-        u.balance += Number(reqDoc.amount);
-        if (u.withdrawals && u.withdrawals.length > 0) {
-            let wItem = u.withdrawals.find(w => String(w.id) === String(reqId));
-            if (wItem) wItem.status = 'Rejected';
-        }
+        u.balance += parseFloat(reqDoc.amount);
+        setRequestStatus(u.withdrawals, reqId, ['PENDING', 'PEND1NG'], 'DECLINED');
         u.markModified('withdrawals');
         await u.save();
-        sendTelegramMessage(reqDoc.userId, `❌ Your withdrawal request was declined and funds refunded to your balance.`);
+        sendTelegramMessage(reqDoc.userId, `❌ Your withdrawal request was declined and funds refunded.`);
     }
 }
 
@@ -225,16 +331,14 @@ async function handleWebhookLogic(req, res) {
 
             let user = await User.findOne({ id: chatId });
             if (user && user.isBanned) {
-                await sendTelegramMessage(chatId, '⚠️ *Access Denied:* Your account has been banned.');
+                await sendTelegramMessage(chatId, "⚠️ *Access Denied:* Your account has been banned.");
                 return;
             }
 
             if (text.startsWith('/start')) {
                 let referrerId = null;
                 const match = text.match(/\/start\s+(\d+)/);
-                if (match && match[1]) {
-                    referrerId = String(match[1]).trim();
-                }
+                if (match && match[1]) referrerId = String(match[1]).trim();
 
                 if (!user) {
                     user = new User({
@@ -245,172 +349,73 @@ async function handleWebhookLogic(req, res) {
                     await user.save();
                 }
 
-                if (user.referredBy) {
-                    const l1Id = user.referredBy;
-                    let refL1User = await User.findOne({ id: l1Id });
-                    if (refL1User) {
-                        let exists = refL1User.referrals.level1.some(r => (typeof r === 'string' ? r === chatId : r.id === chatId));
-                        if (!exists) {
-                            refL1User.referrals.level1.push({ id: chatId, joinedDate: 'Active', bonusEarned: 0 });
-                            refL1User.markModified('referrals.level1');
-                            await refL1User.save();
-                        }
-                    }
-                }
-
-                const welcomeCaption = `🎉 *Welcome to UnitedPay Investment Platform!*\n\nSecure cloud mining & AI-backed high-yield returns. Invest & earn daily! 🚀`;
-                const startPhotoUrl = 'https://i.ibb.co/JR4RRkb7/file-00000000abd481f48234067ed5a24c85.png';
-
+                const welcomeCaption = `🎉 *Welcome to BNB Smart Miner!*\n\n⛏️ _Mine BNB, invite friends & earn rewards._`;
+                const startPhotoUrl = "https://i.ibb.co/jk5thdjj/file-000000003e3481f49aa5f2b114415564.png";
                 const webAppMarkup = {
                     inline_keyboard: [
-                        [{ text: '🚀 Open UnitedPay App', web_app: { url: process.env.RENDER_EXTERNAL_URL || 'https://your-app.onrender.com' } }],
-                        [{ text: '📢 Official Channel', url: 'https://t.me/UnitedPayBot' }]
+                        [{ text: "📢 Join Official Channel", url: "https://t.me/Bnbsmartminer1" }],
+                        [{ text: "💸 Join Payment Channel", url: "https://t.me/paymentschanel12" }]
                     ]
                 };
-
                 await sendTelegramPhoto(chatId, startPhotoUrl, welcomeCaption, webAppMarkup);
+            }
+        } else if (update.callback_query) {
+            const query = update.callback_query;
+            const chatId = String(query.message.chat.id);
+            const data = query.data;
+            const messageId = query.message.message_id;
+
+            if (data.startsWith('approve_') || data.startsWith('reject_')) {
+                if (chatId !== String(ADMIN_ID)) return answerCallbackQuery(query.id, "Unauthorized!");
+                const isApprove = data.startsWith('approve_');
+                const reqId = data.replace(isApprove ? 'approve_' : 'reject_', '');
+
+                const reqDoc = await PendingRequest.findOneAndDelete({ reqId });
+                if (!reqDoc) return answerCallbackQuery(query.id, "Request already handled!");
+
+                const u = await User.findOne({ id: reqDoc.userId });
+                if (isApprove) {
+                    await approveRequest(reqDoc, u, reqId);
+                    editTelegramMessage(chatId, messageId, `✅ **Request Approved**\nUser ID: ${reqDoc.userId}`);
+                } else {
+                    await rejectRequest(reqDoc, u, reqId);
+                    editTelegramMessage(chatId, messageId, `❌ **Request Rejected**\nUser ID: ${reqDoc.userId}`);
+                }
+                answerCallbackQuery(query.id, "Done!");
             }
         }
     } catch (err) {
-        console.log('Webhook error:', err);
+        console.log("Webhook error:", err);
     }
 }
 
 app.post(`/api/webhook/${BOT_TOKEN}`, handleWebhookLogic);
+app.post('/webhook', handleWebhookLogic);
 
-// ================== USER API ==================
-app.get('/api/user/:userId', async (req, res) => {
-    try {
-        const userId = String(req.params.userId);
-        let user = await User.findOne({ id: userId });
-
-        if (!user) {
-            user = new User({ id: userId, username: req.query.username || 'User' });
-            await user.save();
-        }
-
-        res.json({ success: true, user });
-    } catch (e) {
-        console.log('User API error:', e);
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
+app.get('/', (req, res) => {
+    res.send(`<h1>BNB Smart Miner Backend Active</h1>`);
 });
 
-app.post('/api/deposit', async (req, res) => {
-    try {
-        const { userId, amount, txHash } = req.body;
-        if (!userId || !amount || !txHash) {
-            return res.status(400).json({ success: false, message: 'Invalid deposit data.' });
-        }
-
-        const amt = parseFloat(amount);
-        if (!amt || amt <= 0) {
-            return res.status(400).json({ success: false, message: 'Invalid amount.' });
-        }
-
-        let u = await User.findOne({ id: String(userId) });
-        if (!u) u = new User({ id: String(userId) });
-
-        const reqId = 'dep_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
-
-        u.deposits.unshift({
-            id: reqId,
-            type: 'Recharge',
-            amount: amt,
-            date: new Date().toLocaleString(),
-            status: 'Pending',
-            txHash: String(txHash).trim()
-        });
-        u.markModified('deposits');
-        await u.save();
-
-        await PendingRequest.create({
-            reqId,
-            type: 'deposit',
-            userId: String(userId),
-            amount: amt,
-            txHash: String(txHash).trim(),
-            status: 'PENDING'
-        });
-
-        if (ADMIN_ID) {
-            await sendTelegramMessage(ADMIN_ID, `📥 *New Deposit Request*\n\n👤 User ID: \`${userId}\`\n💰 Amount: *$${amt} USDT*\n🔑 TxHash: \`${txHash}\``);
-        }
-
-        res.json({ success: true, message: 'Deposit request submitted successfully' });
-    } catch (e) {
-        console.log('Deposit error:', e);
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
-});
-
-app.post('/api/withdraw', async (req, res) => {
-    try {
-        const { userId, amount, address } = req.body;
-        let amt = parseFloat(amount);
-        if (!userId || !amt || amt < 6 || !address) {
-            return res.status(400).json({ success: false, message: 'Minimum withdrawal is 6 USDT' });
-        }
-
-        let u = await User.findOne({ id: String(userId) });
-        if (!u || u.balance < amt) {
-            return res.status(400).json({ success: false, message: 'Insufficient balance' });
-        }
-
-        u.balance -= amt;
-
-        const reqId = 'wd_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
-        u.withdrawals.unshift({
-            id: reqId,
-            type: 'Withdrawal',
-            amount: -amt,
-            date: new Date().toLocaleString(),
-            status: 'Pending',
-            address: address
-        });
-        u.markModified('withdrawals');
-        await u.save();
-
-        await PendingRequest.create({
-            reqId,
-            type: 'withdraw',
-            userId: String(userId),
-            amount: amt,
-            address,
-            status: 'PENDING'
-        });
-
-        if (ADMIN_ID) {
-            await sendTelegramMessage(ADMIN_ID, `📤 *New Withdraw Request*\n\n👤 User ID: \`${userId}\`\n💰 Amount: *$${amt} USDT*\n🏦 Address: \`${address}\``);
-        }
-
-        res.json({ success: true, message: 'Withdrawal requested successfully', newBalance: u.balance });
-    } catch (e) {
-        console.log('Withdraw error:', e);
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
-});
-
-// ================== WEBSITE ADMIN PANEL ==================
+// ================== ADMIN PANEL ==================
 app.get('/admin/login', (req, res) => {
     res.send(`
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Admin Login - UnitedPay</title>
+            <title>Admin Login - BNB Smart Miner</title>
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
                 * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
                 body { background: #0c0a09; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
                 .login-card { background: #1c1917; border: 1px solid #292524; padding: 30px; border-radius: 16px; width: 90%; max-width: 360px; text-align: center; }
-                h2 { color: #f5b83d; margin-bottom: 20px; }
+                h2 { color: #38bdf8; margin-bottom: 20px; }
                 input { width: 100%; padding: 12px; margin-bottom: 12px; background: #0c0a09; border: 1px solid #44403c; color: #fff; border-radius: 8px; }
-                button { width: 100%; padding: 12px; background: #f5b83d; color: #000; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
+                button { width: 100%; padding: 12px; background: #38bdf8; color: #000; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
             </style>
         </head>
         <body>
             <div class="login-card">
-                <h2>👑 Admin Login</h2>
+                <h2>🔐 Admin Login</h2>
                 <form action="/admin/login" method="POST">
                     <input type="text" name="username" placeholder="Username" required>
                     <input type="password" name="password" placeholder="Password" required>
@@ -425,12 +430,12 @@ app.get('/admin/login', (req, res) => {
 app.post('/admin/login', (req, res) => {
     const { username, password } = req.body;
     if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-        const sessionToken = 'token_' + crypto.randomBytes(24).toString('hex');
+        const sessionToken = "token_" + Math.random().toString(36).substring(2) + Date.now();
         activeSessions.add(sessionToken);
-        res.setHeader('Set-Cookie', `admin_session=${sessionToken}; Path=/; HttpOnly; Max-Age=86400`);
+        res.setHeader('Set-Cookie', `admin_session=${sessionToken}; Path=/; HttpOnly; Max-Age=86400; SameSite=Lax`);
         return res.redirect('/admin/dashboard');
     }
-    res.send(`<script>alert('Invalid Credentials!');location.href='/admin/login';</script>`);
+    res.send(`<script>alert('Invalid Credentials!'); window.location.href='/admin/login';</script>`);
 });
 
 app.get('/admin/logout', (req, res) => {
@@ -441,305 +446,390 @@ app.get('/admin/logout', (req, res) => {
 });
 
 app.get('/admin/dashboard', checkAdminAuth, async (req, res) => {
-    try {
-        const requests = await PendingRequest.find({});
-        const totalUsers = await User.countDocuments();
-        const allUsers = await User.find({});
+    const requests = await PendingRequest.find({});
+    const totalUsers = await User.countDocuments();
+    const allUsers = await User.find({});
+    const liveBnbPrice = await getBnbPrice();
 
-        let totalUsersBalance = 0;
-        let totalPaidOutUsdt = 0;
-        let verifiedUsersCount = 0;
+    let totalPaidOut = 0;
+    let totalGlobalDepositUsdt = 0;
+    let activeDepositUsersCount = 0;
+    let activeDepositUsersList = [];
 
-        allUsers.forEach(u => {
-            totalUsersBalance += Number(u.balance || 0) + Number(u.rechargePool || 0);
-            if (u.totalRecharge > 0) verifiedUsersCount++;
-            if (u.withdrawals) {
-                u.withdrawals.forEach(w => {
-                    if (w.status === 'Approved') totalPaidOutUsdt += Math.abs(Number(w.amount || 0));
-                });
-            }
+    allUsers.forEach(u => {
+        let userActualDepositSum = 0;
+        if (u.deposits) {
+            u.deposits.forEach(d => {
+                if (d.status === 'PAID') {
+                    let depUsdtVal = parseFloat(d.usdtAmount || 1);
+                    userActualDepositSum += depUsdtVal;
+                    totalGlobalDepositUsdt += depUsdtVal;
+                }
+            });
+        }
+
+        if (userActualDepositSum >= 1 && u.planActive !== false) {
+            activeDepositUsersCount++;
+            activeDepositUsersList.push(u);
+        }
+
+        if (u.withdrawals) {
+            u.withdrawals.forEach(w => {
+                if (w.status === 'PAID') totalPaidOut += parseFloat(w.amount || 0);
+            });
+        }
+    });
+
+    let totalGlobalDepositBnb = totalGlobalDepositUsdt / liveBnbPrice;
+    let searchId = req.query.search ? req.query.search.trim() : '';
+    let searchedUser = null;
+    let userTotalDepositUsdt = 0;
+    let userTotalWithdrawBnb = 0;
+    let userPaidWithdrawCount = 0;
+    let totalRefEarn = 0;
+
+    if (searchId) {
+        searchedUser = await User.findOne({
+            $or: [{ id: searchId }, { username: searchId.replace('@', '') }]
         });
 
-        let searchId = req.query.search ? String(req.query.search).trim() : '';
-        let searchedUser = null;
-        if (searchId) {
-            searchedUser = await User.findOne({
-                $or: [
-                    { id: searchId },
-                    { username: searchId },
-                    { username: '@' + searchId.replace('@', '') }
-                ]
-            });
-        }
-
-        // ---- Pending requests HTML on website ----
-        let pendingHtml = '';
-        if (requests.length === 0) {
-            pendingHtml = '<p style="font-size:12px; color:#a8a29e; margin:0;">No pending requests.</p>';
-        } else {
-            const rows = requests.map(r => {
-                const color = r.type === 'deposit' ? '#22c55e' : '#ef4444';
-                return `
-                    <tr>
-                        <td style="color:${color}; font-weight:bold;">${escapeHtml(r.type.toUpperCase())}</td>
-                        <td><code>${escapeHtml(r.userId)}</code></td>
-                        <td><b>$${escapeHtml(r.amount)}</b></td>
-                        <td style="text-align:right;">
-                            <button class="btn btn-green" style="padding:4px 8px; font-size:10px;" onclick="handleReq('${escapeHtml(r.reqId)}', 'approve')">Approve</button>
-                            <button class="btn btn-red" style="padding:4px 8px; font-size:10px;" onclick="handleReq('${escapeHtml(r.reqId)}', 'reject')">Reject</button>
-                        </td>
-                    </tr>`;
-            }).join('');
-            pendingHtml = `
-                <table>
-                    <tr><th>Type</th><th>User ID</th><th>Amount</th><th style="text-align:right;">Action</th></tr>
-                    ${rows}
-                </table>`;
-        }
-
-        // ---- Searched User Details & History on website ----
-        let searchHtml = '';
         if (searchedUser) {
-            const statusHtml = searchedUser.isBanned
-                ? '<span style="color:#ef4444; font-weight:bold;">BANNED</span>'
-                : '<span style="color:#22c55e; font-weight:bold;">ACTIVE</span>';
-            
-            let depHistory = searchedUser.deposits && searchedUser.deposits.length > 0 
-                ? searchedUser.deposits.map(d => `<div style="font-size:11px; border-bottom:1px solid #292524; padding:4px 0;">📥 <b>$${d.amount}</b> - ${d.status} (${d.date})</div>`).join('')
-                : '<div style="font-size:11px; color:#a8a29e;">No deposit history.</div>';
-
-            let wdHistory = searchedUser.withdrawals && searchedUser.withdrawals.length > 0 
-                ? searchedUser.withdrawals.map(w => `<div style="font-size:11px; border-bottom:1px solid #292524; padding:4px 0;">📤 <b>$${Math.abs(w.amount)}</b> - ${w.status} (${w.date})</div>`).join('')
-                : '<div style="font-size:11px; color:#a8a29e;">No withdrawal history.</div>';
-
-            searchHtml = `
-                <div class="user-details" style="margin-top:10px;">
-                    <p>👤 <b>User:</b> ${escapeHtml(searchedUser.username)} | <b>ID:</b> <code>${escapeHtml(searchedUser.id)}</code></p>
-                    <p>💰 <b>Withdrawable Balance:</b> $${Number(searchedUser.balance || 0).toFixed(2)} USDT</p>
-                    <p>📥 <b>Recharge Pool:</b> $${Number(searchedUser.rechargePool || 0).toFixed(2)} USDT</p>
-                    <p>🔒 <b>Status:</b> ${statusHtml}</p>
-                    
-                    <div style="margin-top:10px; display:flex; gap:8px;">
-                        <button class="btn btn-red" style="flex:1; padding:6px; font-size:11px;" onclick="toggleBan('${escapeHtml(searchedUser.id)}', ${searchedUser.isBanned})">${searchedUser.isBanned ? 'Unban User' : 'Ban User'}</button>
-                    </div>
-
-                    <hr style="border-color:#292524; margin:12px 0;">
-                    <b>⚙️ Manage Balance:</b>
-                    <div style="display:flex; gap:8px; margin-top:8px;">
-                        <input type="number" id="mod-amt" placeholder="Amount ($)" style="flex:1;">
-                        <button class="btn btn-green" onclick="modifyBal('${escapeHtml(searchedUser.id)}', 'add')">+ Add</button>
-                        <button class="btn btn-red" onclick="modifyBal('${escapeHtml(searchedUser.id)}', 'cut')">- Cut</button>
-                    </div>
-
-                    <hr style="border-color:#292524; margin:12px 0;">
-                    <b>📥 Deposit History:</b>
-                    <div style="max-height:100px; overflow-y:auto; margin-top:5px;">${depHistory}</div>
-
-                    <hr style="border-color:#292524; margin:12px 0;">
-                    <b>📤 Withdrawal History:</b>
-                    <div style="max-height:100px; overflow-y:auto; margin-top:5px;">${wdHistory}</div>
-                </div>`;
-        } else if (searchId) {
-            searchHtml = '<p style="color:#ef4444; font-size:12px; margin-top:10px;">User not found!</p>';
+            if (searchedUser.deposits) {
+                searchedUser.deposits.forEach(d => {
+                    if (d.status === 'PAID') userTotalDepositUsdt += parseFloat(d.usdtAmount || 1);
+                });
+            }
+            if (searchedUser.withdrawals) {
+                searchedUser.withdrawals.forEach(w => {
+                    if (w.status === 'PAID') {
+                        userTotalWithdrawBnb += parseFloat(w.amount || 0);
+                        userPaidWithdrawCount++;
+                    }
+                });
+            }
+            let l1Earn = searchedUser.refEarnings?.level1 || 0;
+            let l2Earn = searchedUser.refEarnings?.level2 || 0;
+            let l3Earn = searchedUser.refEarnings?.level3 || 0;
+            totalRefEarn = l1Earn + l2Earn + l3Earn;
         }
+    }
 
-        const html = `
-<!DOCTYPE html>
-<html>
-<head>
-    <title>UnitedPay Admin Panel</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { background: #0c0a09; color: #f3f4f6; margin: 0; padding: 16px; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .header h1 { color: #f5b83d; margin: 0; font-size: 20px; }
-        .logout-btn { background: #ef4444; color: #fff; padding: 6px 14px; border-radius: 8px; text-decoration: none; font-size: 12px; font-weight: bold; }
-        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
-        .stat-card { background: #1c1917; border: 1px solid #292524; border-radius: 14px; padding: 14px; text-align: left; }
-        .stat-title { font-size: 10px; color: #a8a29e; text-transform: uppercase; font-weight: bold; }
-        .stat-value { font-size: 18px; font-weight: bold; color: #f5b83d; margin-top: 6px; }
-        .card { background: #1c1917; border: 1px solid #292524; border-radius: 14px; padding: 16px; margin-bottom: 16px; }
-        .card h3 { color: #f5b83d; margin-top: 0; font-size: 14px; border-bottom: 1px solid #292524; padding-bottom: 8px; }
-        .search-box { display: flex; gap: 8px; margin-top: 8px; }
-        input, textarea { background: #0c0a09; border: 1px solid #44403c; color: #fff; padding: 10px; border-radius: 8px; width: 100%; font-size: 13px; }
-        .btn { background: #f5b83d; color: #000; border: none; font-weight: bold; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
-        .btn-green { background: #22c55e; color: #fff; }
-        .btn-red { background: #ef4444; color: #fff; }
-        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #292524; font-size: 11.5px; }
-        th { color: #a8a29e; }
-        .user-details { background: #0c0a09; padding: 12px; border-radius: 8px; border: 1px solid #292524; font-size: 12px; line-height: 1.6; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>👑 UnitedPay Admin</h1>
-        <a href="/admin/logout" class="logout-btn">Logout</a>
-    </div>
+    let html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>BNB Smart Miner Admin Panel</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+                body { background: #0c0a09; color: #f3f4f6; margin: 0; padding: 20px; }
+                .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+                .header h1 { color: #38bdf8; margin: 0; font-size: 24px; }
+                .logout-btn { background: #ef4444; color: #fff; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: bold; }
+                .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+                .stat-card { background: #1c1917; border: 1px solid #292524; border-radius: 12px; padding: 15px; text-align: left; }
+                .stat-title { font-size: 11px; color: #a8a29e; text-transform: uppercase; }
+                .stat-value { font-size: 20px; font-weight: bold; color: #38bdf8; margin-top: 6px; }
+                .nav-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; background: #1c1917; padding: 10px; border-radius: 12px; border: 1px solid #292524; }
+                .nav-tab { background: #292524; color: #a8a29e; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: bold; cursor: pointer; }
+                .nav-tab.active { background: #38bdf8; color: #000; }
+                .tab-content { display: none; }
+                .tab-content.active { display: block; }
+                .card { background: #1c1917; border: 1px solid #292524; border-radius: 12px; padding: 18px; margin-bottom: 20px; }
+                .card h3 { color: #38bdf8; margin-top: 0; font-size: 16px; border-bottom: 1px solid #292524; padding-bottom: 8px; }
+                .search-box { display: flex; gap: 10px; margin-bottom: 15px; }
+                input, textarea { background: #0c0a09; border: 1px solid #44403c; color: #fff; padding: 10px; border-radius: 8px; width: 100%; font-size: 14px; }
+                .btn { background: #38bdf8; color: #000; border: none; font-weight: bold; padding: 10px 18px; border-radius: 8px; cursor: pointer; }
+                .btn-green { background: #22c55e; color: #fff; }
+                .btn-red { background: #ef4444; color: #fff; }
+                .btn-blue { background: #3b82f6; color: #fff; }
+                .btn-gray { background: #6b7280; color: #fff; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th, td { padding: 10px; text-align: left; border-bottom: 1px solid #292524; font-size: 12px; }
+                th { color: #a8a29e; }
+                .user-details-box { background: #0c0a09; padding: 14px; border-radius: 8px; border: 1px solid #292524; margin-top: 10px; font-size: 13px; line-height: 1.8; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>👑 BNB Smart Miner Admin Panel</h1>
+                <a href="/admin/logout" class="logout-btn">Logout</a>
+            </div>
 
-    <div class="stats-grid">
-        <div class="stat-card"><div class="stat-title">Total Users</div><div class="stat-value">${totalUsers}</div></div>
-        <div class="stat-card"><div class="stat-title">Verified Users</div><div class="stat-value">${verifiedUsersCount}</div></div>
-        <div class="stat-card"><div class="stat-title">Users' Balance</div><div class="stat-value">${totalUsersBalance.toFixed(2)} USDT</div></div>
-        <div class="stat-card"><div class="stat-title">Paid Out</div><div class="stat-value">${totalPaidOutUsdt.toFixed(2)} USDT</div></div>
-    </div>
+            <div style="background: #1c1917; border: 1px solid #292524; border-radius: 10px; padding: 10px 15px; margin-bottom: 15px; font-size: 13px; color: #38bdf8; display: flex; justify-content: space-between;">
+                <span>📈 <b>Live BNB Price:</b> $${liveBnbPrice.toFixed(2)} USDT</span>
+            </div>
 
-    <div class="card">
-        <h3>⏳ Pending Requests (${requests.length})</h3>
-        ${pendingHtml}
-    </div>
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-title">Total Users</div><div class="stat-value">${totalUsers}</div></div>
+                <div class="stat-card"><div class="stat-title">Total User Deposit</div><div class="stat-value">${totalGlobalDepositUsdt.toFixed(2)} USDT</div></div>
+                <div class="stat-card"><div class="stat-title">Active Plan Users</div><div class="stat-value">${activeDepositUsersCount}</div></div>
+                <div class="stat-card"><div class="stat-title">Paid Out</div><div class="stat-value">${totalPaidOut.toFixed(4)} BNB</div></div>
+                <div class="stat-card"><div class="stat-title">Pending Requests</div><div class="stat-value">${requests.length}</div></div>
+            </div>
 
-    <div class="card">
-        <h3>🔍 Search & Manage User</h3>
-        <form method="GET" action="/admin/dashboard" class="search-box">
-            <input type="text" name="search" placeholder="Telegram ID or @username" value="${escapeHtml(searchId)}">
-            <button type="submit" class="btn">Search</button>
-        </form>
-        ${searchHtml}
-    </div>
+            <div class="nav-tabs">
+                <div class="nav-tab active" onclick="switchTab('tab-users', this)">👥 Users & Plans</div>
+                <div class="nav-tab" onclick="switchTab('tab-search', this)">🔍 Search & Manage User</div>
+                <div class="nav-tab" onclick="switchTab('tab-requests', this)">⏳ Pending Requests (${requests.length})</div>
+                <div class="nav-tab" onclick="switchTab('tab-broadcast', this)">📢 Broadcast</div>
+            </div>
 
-    <div class="card">
-        <h3>📢 Broadcast</h3>
-        <textarea id="bc-msg" placeholder="Message to all users..."></textarea>
-        <button class="btn" style="margin-top:10px; width:100%;" onclick="sendBroadcast()">Send Broadcast</button>
-    </div>
+            <div id="tab-users" class="tab-content active">
+                <div class="card">
+                    <h3>👥 Users With Active Plans</h3>
+                    ${activeDepositUsersList.length === 0 ? `<p style="font-size:12px; color:#a8a29e;">No active plan users found.</p>` : `
+                        <table>
+                            <tr><th>User ID</th><th>Username</th><th>Total Deposit</th><th>GHS Power</th><th>Plan Expiry</th></tr>
+                            ${activeDepositUsersList.map(depUser => {
+                                let depTotalUsdt = 0;
+                                if (depUser.deposits) {
+                                    depUser.deposits.forEach(d => { if (d.status === 'PAID') depTotalUsdt += parseFloat(d.usdtAmount || 1); });
+                                }
+                                return `
+                                    <tr>
+                                        <td><code>${depUser.id}</code></td>
+                                        <td>${depUser.username}</td>
+                                        <td><b style="color:#22c55e;">${depTotalUsdt.toFixed(2)} USDT</b></td>
+                                        <td><b>${depUser.ghs} GHS</b></td>
+                                        <td><b style="color:#38bdf8;">${getPlanDaysFormat(depUser)}</b></td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </table>
+                    `}
+                </div>
+            </div>
 
-    <script>
-        async function handleReq(reqId, action) {
-            let res = await fetch('/admin/action', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ reqId, action })
-            });
-            let data = await res.json();
-            alert(data.message);
-            location.reload();
-        }
-        async function modifyBal(userId, action) {
-            let amount = document.getElementById('mod-amt').value;
-            if (!amount) return alert('Enter amount!');
-            let res = await fetch('/admin/manage-balance', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ userId, amount, action })
-            });
-            let data = await res.json();
-            alert(data.message);
-            location.reload();
-        }
-        async function toggleBan(userId, currentStatus) {
-            let res = await fetch('/admin/toggle-ban', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ userId, ban: !currentStatus })
-            });
-            let data = await res.json();
-            alert(data.message);
-            location.reload();
-        }
-        async function sendBroadcast() {
-            let message = document.getElementById('bc-msg').value;
-            if (!message) return alert('Enter broadcast message!');
-            let res = await fetch('/admin/broadcast', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ message })
-            });
-            let data = await res.json();
-            alert(data.message);
-        }
-    </script>
-</body>
-</html>`;
+            <div id="tab-search" class="tab-content">
+                <div class="card">
+                    <h3>🔍 Search User Details & History</h3>
+                    <form method="GET" action="/admin/dashboard" class="search-box">
+                        <input type="text" name="search" placeholder="Enter Telegram User ID or Username" value="${searchId}">
+                        <button type="submit" class="btn">Search</button>
+                    </form>
+                    ${searchedUser ? `
+                        <div class="user-details-box">
+                            <p>👤 <b>Username:</b> ${searchedUser.username} | <b>ID:</b> <code>${searchedUser.id}</code></p>
+                            <p>💰 <b>Balance:</b> <span style="color:#38bdf8; font-weight:bold;">${searchedUser.balance.toFixed(4)} BNB</span> | ⚡ <b>GHS:</b> ${searchedUser.ghs}</p>
+                            <p>🚫 <b>Status:</b> ${searchedUser.isBanned ? '<span style="color:#ef4444;">BANNED</span>' : '<span style="color:#22c55e;">ACTIVE</span>'}</p>
+                            <p>📥 <b>Total Deposit:</b> <span style="color:#22c55e;">${userTotalDepositUsdt.toFixed(2)} USDT</span></p>
+                            <p>📤 <b>Total Withdraw:</b> <span style="color:#ef4444;">${userTotalWithdrawBnb.toFixed(4)} BNB</span> (${userPaidWithdrawCount} Times)</p>
+                            <p>👥 <b>Referrals:</b> L1: ${searchedUser.referrals?.level1?.length || 0} | L2: ${searchedUser.referrals?.level2?.length || 0} | L3: ${searchedUser.referrals?.level3?.length || 0}</p>
+                            
+                            <hr style="border-color:#292524; margin:12px 0;">
+                            <b>⚙️ Quick Actions:</b>
+                            <div style="display:flex; gap:10px; margin-top:8px; flex-wrap:wrap;">
+                                <input type="number" id="mod-amt" placeholder="Amount" style="flex:1; min-width:120px;">
+                                <button class="btn btn-green" onclick="modifyBal('${searchedUser.id}', 'add')">+ Add</button>
+                                <button class="btn btn-red" onclick="modifyBal('${searchedUser.id}', 'cut')">- Cut</button>
+                                <button class="btn btn-blue" onclick="togglePlan('${searchedUser.id}', 'activate')">⚡ Activate Plan</button>
+                                <button class="btn btn-red" onclick="toggleBan('${searchedUser.id}', 'ban')">🚫 Ban</button>
+                                <button class="btn btn-green" onclick="toggleBan('${searchedUser.id}', 'unban')">✅ Unban</button>
+                            </div>
+                        </div>
+                    ` : searchId ? `<p style="color:#ef4444; font-size:12px;">User not found!</p>` : ''}
+                </div>
+            </div>
 
-        res.send(html);
-    } catch (e) {
-        console.log('Dashboard error:', e);
-        res.status(500).send('Server error');
+            <div id="tab-requests" class="tab-content">
+                <div class="card">
+                    <h3>⏳ Pending Requests</h3>
+                    ${requests.length === 0 ? `<p style="font-size:12px; color:#a8a29e;">No pending requests.</p>` : `
+                        <table>
+                            <tr><th>Type</th><th>User ID</th><th>Amount</th><th>Details</th><th>Action</th></tr>
+                            ${requests.map(r => `
+                                <tr>
+                                    <td style="color:${r.type==='deposit'?'#22c55e':'#ef4444'}; font-weight:bold;">${r.type.toUpperCase()}</td>
+                                    <td>${r.userId}</td>
+                                    <td><b>${r.amount}</b></td>
+                                    <td>${r.txHash ? 'Tx: ' + r.txHash.substring(0,10) + '...' : 'Addr: ' + r.address.substring(0,10) + '...'}</td>
+                                    <td>
+                                        <button class="btn btn-green" style="padding:4px 8px; font-size:11px;" onclick="handleReq('${r.reqId}', 'approve')">Approve</button>
+                                        <button class="btn btn-red" style="padding:4px 8px; font-size:11px;" onclick="handleReq('${r.reqId}', 'reject')">Reject</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </table>
+                    `}
+                </div>
+            </div>
+
+            <div id="tab-broadcast" class="tab-content">
+                <div class="card">
+                    <h3>📢 Broadcast Message</h3>
+                    <input type="text" id="bc-photo" placeholder="Image URL (Optional)" style="margin-bottom:10px;">
+                    <textarea id="bc-msg" placeholder="Write message..."></textarea>
+                    <button class="btn" style="margin-top:10px; width:100%;" onclick="sendBroadcast()">Send Broadcast</button>
+                </div>
+            </div>
+
+            <script>
+                function switchTab(tabId, el) {
+                    document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+                    document.querySelectorAll('.nav-tab').forEach(nt => nt.classList.remove('active'));
+                    document.getElementById(tabId).classList.add('active');
+                    el.classList.add('active');
+                }
+                if('${searchId}' !== '') { switchTab('tab-search', document.querySelectorAll('.nav-tab')[1]); }
+
+                async function handleReq(reqId, action) {
+                    let res = await fetch('/admin/action', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ reqId, action }) });
+                    let data = await res.json(); alert(data.message); location.reload();
+                }
+                async function modifyBal(userId, action) {
+                    let amount = document.getElementById('mod-amt').value;
+                    if(!amount) return alert("Enter amount!");
+                    let res = await fetch('/admin/manage-balance', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ userId, amount, action }) });
+                    let data = await res.json(); alert(data.message); location.reload();
+                }
+                async function togglePlan(userId, action) {
+                    let res = await fetch('/admin/manage-plan', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ userId, action }) });
+                    let data = await res.json(); alert(data.message); location.reload();
+                }
+                async function toggleBan(userId, action) {
+                    let res = await fetch('/admin/ban-user', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ userId, action }) });
+                    let data = await res.json(); alert(data.message); location.reload();
+                }
+                async function sendBroadcast() {
+                    let message = document.getElementById('bc-msg').value;
+                    let photoUrl = document.getElementById('bc-photo').value;
+                    let res = await fetch('/admin/broadcast', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message, photoUrl }) });
+                    let data = await res.json(); alert(data.message);
+                }
+            </script>
+        </body>
+        </html>
+    `;
+    res.send(html);
+});
+
+// Admin Actions Routes
+app.post('/admin/manage-plan', checkAdminAuth, async (req, res) => {
+    const { userId, action } = req.body;
+    let u = await User.findOne({ id: userId });
+    if (!u) return res.status(404).json({ success: false, message: "User not found!" });
+    const now = Date.now();
+    settleAccrual(u, now);
+    if (action === 'activate') {
+        u.planActive = true;
+        if (u.ghs <= 0) u.ghs = 1;
+        u.planStartDate = now;
+        u.planExpiryDate = now + PLAN_DURATION_MS;
+        await u.save();
+        res.json({ success: true, message: `Plan activated successfully!` });
+    } else {
+        u.planActive = false;
+        u.ghs = 0;
+        await u.save();
+        res.json({ success: true, message: `Plan deactivated successfully!` });
     }
 });
 
 app.post('/admin/action', checkAdminAuth, async (req, res) => {
-    try {
-        const { reqId, action } = req.body;
-        const reqDoc = await PendingRequest.findOneAndDelete({ reqId });
-        if (!reqDoc) return res.status(404).json({ success: false, message: 'Request not found' });
-
-        const u = await User.findOne({ id: reqDoc.userId });
-        if (action === 'approve') {
-            await approveRequest(reqDoc, u, reqId);
-        } else {
-            await rejectRequest(reqDoc, u, reqId);
-        }
-        res.json({ success: true, message: 'Action executed successfully!' });
-    } catch (e) {
-        console.log('Admin action error:', e);
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
+    const { reqId, action } = req.body;
+    const reqDoc = await PendingRequest.findOneAndDelete({ reqId });
+    if (!reqDoc) return res.status(404).json({ success: false, message: "Request not found" });
+    const u = await User.findOne({ id: reqDoc.userId });
+    if (action === 'approve') await approveRequest(reqDoc, u, reqId);
+    else await rejectRequest(reqDoc, u, reqId);
+    res.json({ success: true, message: "Action executed successfully!" });
 });
 
 app.post('/admin/manage-balance', checkAdminAuth, async (req, res) => {
-    try {
-        const { userId, amount, action } = req.body;
-        let u = await User.findOne({ id: String(userId) });
-        if (!u) return res.status(404).json({ success: false, message: 'User not found!' });
-
-        let amt = parseFloat(amount);
-        if (!amt || amt <= 0) return res.status(400).json({ success: false, message: 'Invalid amount!' });
-
-        if (action === 'add') {
-            u.balance += amt;
-            sendTelegramMessage(userId, `🎁 Admin added +$${amt} USDT to your balance!`);
-        } else {
-            u.balance = Math.max(0, u.balance - amt);
-            sendTelegramMessage(userId, `⚠️ Admin deducted -$${amt} USDT from your balance.`);
-        }
-        await u.save();
-        res.json({ success: true, message: `Successfully updated balance for user ${userId}!` });
-    } catch (e) {
-        console.log('Manage balance error:', e);
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
+    const { userId, amount, action } = req.body;
+    let u = await User.findOne({ id: userId });
+    if (!u) return res.status(404).json({ success: false, message: "User not found!" });
+    let amt = parseFloat(amount);
+    if (action === 'add') u.balance += amt;
+    else u.balance = Math.max(0, u.balance - amt);
+    await u.save();
+    res.json({ success: true, message: `Balance updated successfully!` });
 });
 
-app.post('/admin/toggle-ban', checkAdminAuth, async (req, res) => {
-    try {
-        const { userId, ban } = req.body;
-        let u = await User.findOne({ id: String(userId) });
-        if (!u) return res.status(404).json({ success: false, message: 'User not found!' });
-
-        u.isBanned = ban;
-        await u.save();
-        res.json({ success: true, message: `User status updated successfully!` });
-    } catch (e) {
-        console.log('Toggle ban error:', e);
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
-});
-
-app.post('/admin/broadcast', checkAdminAuth, async (req, routes) => {
-    // handled via express route below
+app.post('/admin/ban-user', checkAdminAuth, async (req, res) => {
+    const { userId, action } = req.body;
+    let u = await User.findOne({ id: userId });
+    if (!u) return res.status(404).json({ success: false, message: "User not found!" });
+    u.isBanned = (action === 'ban');
+    await u.save();
+    res.json({ success: true, message: `User status updated!` });
 });
 
 app.post('/admin/broadcast', checkAdminAuth, async (req, res) => {
-    try {
-        const { message } = req.body;
-        const users = await User.find({});
-        let count = 0;
-        for (let u of users) {
-            await sendTelegramMessage(u.id, message);
-            count++;
-        }
-        res.json({ success: true, message: `Broadcast sent to ${count} users successfully!` });
-    } catch (e) {
-        console.log('Broadcast error:', e);
-        res.status(500).json({ success: false, message: 'Server error' });
+    const { message, photoUrl } = req.body;
+    const users = await User.find({});
+    let count = 0;
+    for (let u of users) {
+        if (photoUrl && photoUrl.trim() !== '') await sendTelegramPhoto(u.id, photoUrl.trim(), message || '');
+        else if (message && message.trim() !== '') await sendTelegramMessage(u.id, message);
+        count++;
     }
+    res.json({ success: true, message: `Broadcast sent to ${count} users!` });
 });
 
-// ================== START SERVER ==================
+// Mini App API Routes
+app.get('/api/user/:userId', async (req, res) => {
+    const userId = String(req.params.userId);
+    let user = await User.findOne({ id: userId });
+    if (user && user.isBanned) return res.status(403).json({ success: false, isBanned: true });
+    if (!user) { user = new User({ id: userId, username: 'User' }); await user.save(); }
+    const price = await getBnbPrice();
+    const data = user.toObject();
+    data.pendingUsd = Number(user.accruedUsd || 0) + accrueUsd(user, Date.now());
+    data.dailyUsd = dailyUsdRate(user, Date.now());
+    data.paidPlan = isPaidPlanActive(user, Date.now());
+    data.bnbPrice = price;
+    res.json(data);
+});
+
+app.post('/api/deposit', async (req, res) => {
+    const { userId, username, amount, usdtAmount, coin, txHash } = req.body;
+    if (!userId || !amount || !txHash) return res.status(400).json({ success: false, message: "Invalid deposit data." });
+    const cleanTxHash = String(txHash).trim();
+    let u = await User.findOne({ id: userId });
+    if (!u) u = new User({ id: userId, username: username || 'User' });
+    const reqId = 'dep_' + Date.now();
+    u.deposits.unshift({ id: reqId, amount, usdtAmount: Number(usdtAmount) || 1, coin: coin || 'BNB', txHash: cleanTxHash, status: 'PENDING', date: new Date().toLocaleDateString() });
+    u.markModified('deposits');
+    await u.save();
+    await PendingRequest.create({ reqId, type: 'deposit', userId, amount, usdtAmount: Number(usdtAmount) || 1, coin: coin || 'BNB', txHash: cleanTxHash, status: 'PENDING' });
+    if (ADMIN_ID) {
+        await sendTelegramMessage(ADMIN_ID, `📥 **New Deposit Request**\nUser: \`${userId}\`\nAmount: **${amount}**\nTx: \`${cleanTxHash}\``, {
+            inline_keyboard: [[{ text: "✅ Approve", callback_data: `approve_${reqId}` }, { text: "❌ Reject", callback_data: `reject_${reqId}` }]]
+        });
+    }
+    res.json({ success: true, message: "Deposit request submitted successfully" });
+});
+
+app.post('/api/withdraw', async (req, res) => {
+    const { userId, username, amount, address } = req.body;
+    let amt = parseFloat(amount);
+    if (!userId || !amt || amt <= 0 || !address) return res.status(400).json({ success: false, message: "Invalid withdrawal data" });
+    let u = await User.findOne({ id: userId });
+    if (!u || u.isBanned || u.balance < amt) return res.status(400).json({ success: false, message: "Insufficient balance or banned" });
+    u.balance -= amt;
+    const reqId = 'wd_' + Date.now();
+    u.withdrawals.unshift({ id: reqId, amount: amt, address, status: 'PENDING', date: new Date().toLocaleDateString() });
+    u.markModified('withdrawals');
+    await u.save();
+    await PendingRequest.create({ reqId, type: 'withdraw', userId, amount: amt, address, status: 'PENDING' });
+    if (ADMIN_ID) {
+        await sendTelegramMessage(ADMIN_ID, `📤 **New Withdraw Request**\nUser: \`${userId}\`\nAmount: **${amt} BNB**`, {
+            inline_keyboard: [[{ text: "✅ Approve", callback_data: `approve_${reqId}` }, { text: "❌ Reject", callback_data: `reject_${reqId}` }]]
+        });
+    }
+    res.json({ success: true, message: "Withdrawal requested successfully", newBalance: u.balance });
+});
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}`);
+    const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
+    if (RENDER_URL && BOT_TOKEN) {
+        try {
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/setWebhook?url=${RENDER_URL}/api/webhook/${BOT_TOKEN}`);
+            console.log("Telegram Webhook Set Successfully!");
+        } catch (e) {}
+    }
 });
