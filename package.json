@@ -1,12 +1,11 @@
 {
-  "name": "unitedpay-bot",
+  "name": "unitedpay-backend",
   "version": "1.0.0",
-  "description": "UnitedPay AI Investment & Cloud Mining - Telegram Mini App backend",
+  "description": "UnitedPay AI Investment & Cloud Mining Backend API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "license": "ISC",
   "dependencies": {
     "express": "^4.18.2",
     "mongoose": "^7.5.0"
