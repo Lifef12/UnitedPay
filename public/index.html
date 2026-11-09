@@ -435,7 +435,7 @@ body {
 <div id="lucky-wheel-modal">
     <div class="lw-card">
         <div class="lw-close" onclick="closeLuckyWheel()"><i class="fa-solid fa-xmark"></i></div>
-        <div class="lw-remaining">Remaining times <span id="lw-chances-count">0</span></div>
+        <div class="lw-remaining">Remaining times <span id="lw-chances-count">1</span></div>
         
         <div class="lw-wheel-wrapper">
             <svg class="lw-wheel-img" id="wheel-svg" viewBox="0 0 500 500">
@@ -554,7 +554,7 @@ body {
                 </div>
             </div>
             <div class="user-id-row" style="margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.15); padding-top: 8px;">
-                <span id="user-id-text">ID: ---</span>
+                <span id="user-id-text">ID: 9243808443</span>
                 <div class="user-badge-pill" id="user-vip-badge">VIP-1</div>
             </div>
         </div>
@@ -617,6 +617,20 @@ body {
                 <div class="member-pay-right">
                     <div class="member-masked-id" id="live-id-0">@4k891******qw</div>
                     <div class="member-vip-pill" id="live-vip-0">VIP-4</div>
+                </div>
+            </div>
+            <div class="member-pay-card">
+                <div class="member-pay-left" id="live-amt-1">+$320.00</div>
+                <div class="member-pay-right">
+                    <div class="member-masked-id" id="live-id-1">@9m210******rt</div>
+                    <div class="member-vip-pill" id="live-vip-1">VIP-2</div>
+                </div>
+            </div>
+            <div class="member-pay-card">
+                <div class="member-pay-left" id="live-amt-2">+$4,890.00</div>
+                <div class="member-pay-right">
+                    <div class="member-masked-id" id="live-id-2">@7x342******kp</div>
+                    <div class="member-vip-pill" id="live-vip-2">VIP-7</div>
                 </div>
             </div>
         </div>
@@ -688,9 +702,69 @@ body {
 
         <!-- TEAM STATISTICS BANNER -->
         <div class="team-stats-grid">
-            <div class="tstat-col"><span class="tstat-lbl">Team size</span><span class="tstat-val" id="tstat-size">0</span></div>
-            <div class="tstat-col"><span class="tstat-lbl">Team recharge</span><span class="tstat-val" id="tstat-recharge">$0.00</span></div>
-            <div class="tstat-col"><span class="tstat-lbl">Team Withdrawal</span><span class="tstat-val" id="tstat-withdrawal">$0.00</span></div>
+            <div class="tstat-col">
+                <span class="tstat-lbl">Team size</span>
+                <span class="tstat-val" id="tstat-size">0</span>
+            </div>
+            <div class="tstat-col">
+                <span class="tstat-lbl">Team recharge</span>
+                <span class="tstat-val" id="tstat-recharge">$0.00</span>
+            </div>
+            <div class="tstat-col">
+                <span class="tstat-lbl">Team Withdrawal</span>
+                <span class="tstat-val" id="tstat-withdrawal">$0.00</span>
+            </div>
+            <div class="tstat-col" style="margin-top: 10px;">
+                <span class="tstat-lbl">New team</span>
+                <span class="tstat-val">0</span>
+            </div>
+            <div class="tstat-col" style="margin-top: 10px;">
+                <span class="tstat-lbl">First time recharge</span>
+                <span class="tstat-val">0</span>
+            </div>
+            <div class="tstat-col" style="margin-top: 10px;">
+                <span class="tstat-lbl">First withdrawal</span>
+                <span class="tstat-val">0</span>
+            </div>
+        </div>
+
+        <!-- LEVEL CARDS -->
+        <div class="team-level-cards-grid">
+            <div class="tlevel-card tlevel-1">
+                <div class="tlevel-top-row">
+                    <span class="tlevel-title"><i class="fa-solid fa-medal" style="color: #f59e0b;"></i> LEVEL 1</span>
+                    <span class="tlevel-badge">11%</span>
+                </div>
+                <div class="tlevel-details-row">
+                    <span>Register/Valid: <b>0/0</b></span>
+                    <span>Total Income: <b style="color: #16a34a;">0 USDT</b></span>
+                </div>
+                <button class="tlevel-btn" onclick="showToast('Level 1 commission rate: 11%')">Details &gt;&gt;</button>
+            </div>
+
+            <div class="tlevel-card tlevel-2">
+                <div class="tlevel-top-row">
+                    <span class="tlevel-title"><i class="fa-solid fa-medal" style="color: #3b82f6;"></i> LEVEL 2</span>
+                    <span class="tlevel-badge" style="background: #3b82f6;">2%</span>
+                </div>
+                <div class="tlevel-details-row">
+                    <span>Register/Valid: <b>0/0</b></span>
+                    <span>Total Income: <b style="color: #16a34a;">0 USDT</b></span>
+                </div>
+                <button class="tlevel-btn" style="background: #3b82f6;" onclick="showToast('Level 2 commission rate: 2%')">Details &gt;&gt;</button>
+            </div>
+
+            <div class="tlevel-card tlevel-3">
+                <div class="tlevel-top-row">
+                    <span class="tlevel-title"><i class="fa-solid fa-medal" style="color: #d97706;"></i> LEVEL 3</span>
+                    <span class="tlevel-badge" style="background: #d97706;">1%</span>
+                </div>
+                <div class="tlevel-details-row">
+                    <span>Register/Valid: <b>0/0</b></span>
+                    <span>Total Income: <b style="color: #16a34a;">0 USDT</b></span>
+                </div>
+                <button class="tlevel-btn" style="background: #d97706;" onclick="showToast('Level 3 commission rate: 1%')">Details &gt;&gt;</button>
+            </div>
         </div>
     </div>  
 
@@ -705,6 +779,7 @@ body {
 
     <!-- TAB 5: ME / PROFILE -->
     <div id="tab-me" class="tab-content">  
+        <!-- ME HEADER -->
         <div class="me-header-box">
             <div class="me-top-row">
                 <div class="me-user-info">
@@ -718,6 +793,7 @@ body {
             </div>
         </div>
 
+        <!-- STATS BANNER -->
         <div class="me-stats-banner">
             <div class="me-stat-col">
                 <span class="me-stat-lbl">Withdrawable (USDT)</span>
@@ -729,6 +805,7 @@ body {
             </div>
         </div>
 
+        <!-- 4 ACTION BUTTONS GRID -->
         <div class="me-actions-grid">
             <div class="me-action-btn" onclick="switchTab('recharge')">
                 <div class="me-act-icon"><i class="fa-solid fa-wallet"></i></div>
@@ -738,6 +815,14 @@ body {
                 <div class="me-act-icon"><i class="fa-solid fa-money-bill-transfer"></i></div>
                 <div class="me-act-label">Withdraw</div>
             </div>
+            <div class="me-action-btn" onclick="switchTab('account')">
+                <div class="me-act-icon"><i class="fa-solid fa-id-card-clip"></i></div>
+                <div class="me-act-label">Account</div>
+            </div>
+            <div class="me-action-btn" onclick="switchTab('financial-records')">
+                <div class="me-act-icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+                <div class="me-act-label">Financial records</div>
+            </div>
         </div>
     </div>  
 
@@ -746,7 +831,9 @@ body {
         <h2 class="title-header"><i class="fa-solid fa-shield-halved"></i> Admin Control Panel</h2>
         <div style="background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 16px; text-align: left;">
             <div style="font-size: 13px; font-weight: 800; color: #372652; margin-bottom: 12px;">Pending User Requests</div>
-            <div id="admin-requests-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
+            <div id="admin-requests-list" style="display: flex; flex-direction: column; gap: 10px;">
+                <!-- Dynamically populated pending requests -->
+            </div>
         </div>
     </div>
 
@@ -755,10 +842,21 @@ body {
         <h2 class="title-header">Deposit & Recharge</h2>
         <div style="background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 16px; text-align: left;">
             <span style="font-size: 11px; font-weight: 800; color: #64748b;">Enter Recharge Amount ($ USD)</span>
-            <input type="number" id="recharge-usd-input" min="10" value="10" style="width: 100%; padding: 12px; margin: 6px 0 14px 0; border-radius: 10px; border: 1px solid var(--border);">
+            <input type="number" id="recharge-usd-input" min="10" value="10" placeholder="10" style="width: 100%; padding: 12px; margin: 6px 0 14px 0; border-radius: 10px; border: 1px solid var(--border); background: #f8fafc; font-weight: 700;">
             
+            <span style="font-size: 11px; font-weight: 800; color: #64748b;">Select Network</span>
+            <select id="recharge-network" style="width: 100%; padding: 12px; margin: 6px 0 14px 0; border-radius: 10px; border: 1px solid var(--border); background: #f8fafc; font-weight: 700; outline: none;">
+                <option value="usdt_bep20">USDT (BEP-20)</option>
+                <option value="usdt_trc20">USDT (TRC-20)</option>
+                <option value="bnb">BNB Smart Chain</option>
+            </select>
+
+            <span style="font-size: 11px; font-weight: 800; color: #64748b;">Company Deposit Address</span>
+            <input type="text" id="company-deposit-addr" readonly value="0x2B4f0CEdA311d2d94e2c8b5A7fc390985Aac9Db9" style="font-size: 11px; text-align: center; color: #372652; font-weight: bold; background: #f8fafc; border: 1px solid var(--border); padding: 10px; border-radius: 10px; margin: 6px 0;">
+            <button class="ap-btn" style="width: 100%; background: #e2e8f0; color: #1e293b; padding: 10px; margin-bottom: 14px; border-radius: 10px;" onclick="copyDepositAddress()">📋 Copy Address</button>
+
             <span style="font-size: 11px; font-weight: 800; color: #64748b;">Transaction Hash (TxID)</span>
-            <input type="text" id="recharge-txid" placeholder="Paste TxID after payment..." style="width: 100%; padding: 12px; margin: 6px 0 14px 0; border-radius: 10px; border: 1px solid var(--border);">
+            <input type="text" id="recharge-txid" placeholder="Paste TxID after payment..." style="width: 100%; padding: 12px; margin: 6px 0 14px 0; border-radius: 10px; border: 1px solid var(--border); background: #f8fafc; font-weight: 700;">
 
             <button class="ap-btn" style="width: 100%; border-radius: 10px;" onclick="submitRechargeRequest()">Submit Recharge</button>
         </div>
@@ -766,25 +864,89 @@ body {
 
     <!-- WITHDRAW TAB -->
     <div id="tab-withdraw" class="tab-content">
-        <h2 class="title-header">Withdraw</h2>
-        <div style="background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 16px; text-align: left;">
-            <div style="background: #f1f5f9; border-radius: 12px; padding: 14px; margin-bottom: 14px;">
-                <div style="font-size: 11px; font-weight: 700; color: #64748b;">Total balance</div>
+        <h2 class="title-header" style="justify-content: space-between;">
+            <span>Withdraw</span>
+            <span style="font-size: 11px; font-weight: 600; color: #e11d48; background: #fff1f2; padding: 2px 8px; border-radius: 6px;">24 hours withdrawal</span>
+        </h2>
+        <div style="background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 16px; text-align: left; box-shadow: 0 4px 15px rgba(0,0,0,0.03);">
+            
+            <div style="background: #f1f5f9; border-radius: 12px; padding: 14px; margin-bottom: 14px; border: 1px solid var(--border);">
+                <div style="font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 2px;">Total balance</div>
                 <div style="font-size: 24px; font-weight: 800; color: #1e293b;"><span id="withdraw-avail-bal">0.00</span> USDT</div>
             </div>
-            <input type="text" id="withdraw-addr" placeholder="Withdrawal Address" style="width: 100%; padding: 12px; border-radius: 10px; border: none; background: #5b5575; color: #fff; margin-bottom: 12px;">
-            <input type="number" id="withdraw-amount-input" placeholder="Amount ($ USD)" min="6" style="width: 100%; padding: 12px; border-radius: 10px; border: none; background: #5b5575; color: #fff; margin-bottom: 14px;">
-            <button class="ap-btn" style="width: 100%; border-radius: 12px; background: #372652; padding: 14px;" onclick="requestWithdrawal()">Confirm Withdrawal</button>
+
+            <div style="font-size: 11.5px; font-weight: 800; color: #475569; margin-bottom: 6px;">Withdrawal method:</div>
+            <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+                <div style="background: #372652; color: #fff; padding: 8px 14px; border-radius: 10px; font-size: 12px; font-weight: 800; display: flex; align-items: center; gap: 6px;">
+                    <i class="fa-solid fa-shield-halved" style="color: #22c55e;"></i> BEP20-USDT
+                </div>
+            </div>
+
+            <div style="margin-bottom: 12px;">
+                <input type="text" readonly value="Quota 6.000 - 999999.000" style="width: 100%; padding: 12px; border-radius: 10px; border: none; background: #5b5575; color: #fff; font-size: 12px; font-weight: 700; outline: none;">
+            </div>
+
+            <div style="margin-bottom: 12px;">
+                <input type="text" id="withdraw-addr" placeholder="Withdrawal Address" style="width: 100%; padding: 12px; border-radius: 10px; border: none; background: #5b5575; color: #fff; font-size: 12px; font-weight: 700; outline: none;">
+            </div>
+
+            <div style="margin-bottom: 14px;">
+                <input type="number" id="withdraw-amount-input" placeholder="Amount ($ USD)" min="6" style="width: 100%; padding: 12px; border-radius: 10px; border: none; background: #5b5575; color: #fff; font-size: 12px; font-weight: 700; outline: none;">
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 16px; padding: 0 4px;">
+                <span>Actually received</span>
+                <span style="color: #1e293b; font-weight: 800;"><span id="actually-received-amt">0.00</span> USDT</span>
+            </div>
+
+            <button class="ap-btn" style="width: 100%; border-radius: 12px; background: #372652; padding: 14px; font-size: 14px; font-weight: 800;" onclick="requestWithdrawal()">Confirm</button>
+        </div>
+    </div>
+
+    <!-- ACCOUNT / WITHDRAWAL RECORDS TAB -->
+    <div id="tab-account" class="tab-content">
+        <h2 class="title-header">Account & Withdrawal Records</h2>
+        <div style="background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 16px; text-align: left;">
+            <div style="font-size: 12px; font-weight: 800; color: #372652; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                <i class="fa-solid fa-clock-rotate-left"></i> Withdrawal History
+            </div>
+            <div id="withdrawal-records-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+        </div>
+    </div>
+
+    <!-- FINANCIAL RECORDS TAB -->
+    <div id="tab-financial-records" class="tab-content">
+        <h2 class="title-header">Financial Records</h2>
+        <div style="background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 16px; text-align: left;">
+            <div style="font-size: 12px; font-weight: 800; color: #372652; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                <i class="fa-solid fa-list-check"></i> Complete Transaction Ledger
+            </div>
+            <div id="financial-records-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
         </div>
     </div>
 
     <!-- BOTTOM NAVIGATION -->
     <nav class="bottom-nav">  
-        <a class="nav-item active" id="nav-home" onclick="switchTab('home')"><i class="fa-solid fa-house"></i><span>Home</span></a>  
-        <a class="nav-item" id="nav-task" onclick="switchTab('task')"><i class="fa-solid fa-list-check"></i><span>Task</span></a>  
-        <a class="nav-item" id="nav-team" onclick="switchTab('team')"><i class="fa-solid fa-users"></i><span>Team</span></a>  
-        <a class="nav-item" id="nav-vip" onclick="switchTab('vip')"><i class="fa-solid fa-crown"></i><span>VIP</span></a>  
-        <a class="nav-item" id="nav-me" onclick="switchTab('me')"><i class="fa-solid fa-user"></i><span>Me</span></a>  
+        <a class="nav-item active" id="nav-home" onclick="switchTab('home')">  
+            <i class="fa-solid fa-house"></i>  
+            <span>Home</span>  
+        </a>  
+        <a class="nav-item" id="nav-task" onclick="switchTab('task')">  
+            <i class="fa-solid fa-list-check"></i>  
+            <span>Task</span>  
+        </a>  
+        <a class="nav-item" id="nav-team" onclick="switchTab('team')">  
+            <i class="fa-solid fa-users"></i>  
+            <span>Team</span>  
+        </a>  
+        <a class="nav-item" id="nav-vip" onclick="switchTab('vip')">  
+            <i class="fa-solid fa-crown"></i>  
+            <span>VIP</span>  
+        </a>  
+        <a class="nav-item" id="nav-me" onclick="switchTab('me')">  
+            <i class="fa-solid fa-user"></i>  
+            <span>Me</span>  
+        </a>  
     </nav>  
 </div>  
 
@@ -793,11 +955,13 @@ body {
     if (tg && typeof tg.expand === 'function') { tg.expand(); }
 
     let telegramUser = tg?.initDataUnsafe?.user;
-    let userId = telegramUser?.id ? String(telegramUser.id) : "7482625921";  
-    let username = telegramUser?.username ? "@" + telegramUser.username : "User";  
+    let userId = telegramUser?.id ? String(telegramUser.id) : "9243808443";  
+    let username = telegramUser?.username ? "@" + telegramUser.username : (telegramUser?.first_name ? telegramUser.first_name : "User");  
 
+    // Admin ID verification
     const ADMIN_ID = "7482625921";
     let isAdmin = (userId === ADMIN_ID);
+
     if (isAdmin) {
         document.getElementById('floating-admin-btn').style.display = 'flex';
     }
@@ -805,205 +969,605 @@ body {
     document.getElementById('profile-username').innerText = username;  
     document.getElementById('profile-id').innerText = `ID: ${userId}`;  
     document.getElementById('user-id-text').innerText = `ID: ${userId}`;  
-    document.getElementById('ref-link').value = `https://t.me/UnitedPayTg_bot?start=${userId}`;
+    let userRefLink = `https://t.me/UnitedPayBot?start=${userId}`;
+    document.getElementById('ref-link').value = userRefLink;  
 
-    let userData = { balance: 0, rechargePool: 0, totalRecharge: 0, unlockedPlans: [1], completedTasks: [], wheelChances: 1 };
+    let userBalance = parseFloat(localStorage.getItem(`unitedpay_bal_${userId}`) || '0.00'); 
+    let rechargePool = parseFloat(localStorage.getItem(`unitedpay_recharge_pool_${userId}`) || '0.00'); 
+    let totalRecharge = parseFloat(localStorage.getItem(`unitedpay_recharge_${userId}`) || '0.00');
+    
+    let wheelChances = parseInt(localStorage.getItem(`unitedpay_wheel_chances_${userId}`) || '1');
+
+    let accountCreationDate = localStorage.getItem(`unitedpay_created_date_${userId}`);
+    let todayDateStr = new Date().toDateString();
+    if (!accountCreationDate) {
+        accountCreationDate = todayDateStr;
+        localStorage.setItem(`unitedpay_created_date_${userId}`, accountCreationDate);
+    }
+    let isFirstDay = (accountCreationDate === todayDateStr);
+
+    let teamActiveRecharges = parseInt(localStorage.getItem(`unitedpay_team_active_${userId}`) || '0');
+    let unlockedPlans = JSON.parse(localStorage.getItem(`unitedpay_unlocked_plans_${userId}`) || '[1]'); 
+
+    let completedTasksToday = JSON.parse(localStorage.getItem(`unitedpay_completed_tasks_${userId}_${todayDateStr}`) || '[]');
+    let transactionHistory = JSON.parse(localStorage.getItem(`unitedpay_tx_${userId}`) || '[]');
+    
+    // Shared global requests for admin panel simulation across users/admin
+    let globalRequests = JSON.parse(localStorage.getItem(`unitedpay_global_requests`) || '[]');
+
+    const customLogoImg = "https://i.ibb.co/JR4RRkb7/file-00000000abd481f48234067ed5a24c85.png";
 
     const vipPlans = [
-        { level: 1, title: "VIP-1", unlock: 0, daily: 1.00, totalProfit: 365.00, img: "https://i.ibb.co/JR4RRkb7/file-00000000abd481f48234067ed5a24c85.png" },
-        { level: 2, title: "VIP-2", unlock: 10, daily: 6.00, totalProfit: 2190.00, img: "https://i.ibb.co/JR4RRkb7/file-00000000abd481f48234067ed5a24c85.png" },
-        { level: 3, title: "VIP-3", unlock: 30, daily: 20.00, totalProfit: 7300.00, img: "https://i.ibb.co/JR4RRkb7/file-00000000abd481f48234067ed5a24c85.png" }
+        { level: 1, title: "VIP-1", unlock: 0, daily: 1.00, totalProfit: 365.00, img: customLogoImg },
+        { level: 2, title: "VIP-2", unlock: 10, daily: 6.00, totalProfit: 2190.00, img: customLogoImg },
+        { level: 3, title: "VIP-3", unlock: 30, daily: 20.00, totalProfit: 7300.00, img: customLogoImg },
+        { level: 4, title: "VIP-4", unlock: 90, daily: 60.00, totalProfit: 21900.00, img: customLogoImg },
+        { level: 5, title: "VIP-5", unlock: 230, daily: 150.00, totalProfit: 54750.00, img: customLogoImg },
+        { level: 6, title: "VIP-6", unlock: 500, daily: 350.00, totalProfit: 127750.00, img: customLogoImg },
+        { level: 7, title: "VIP-7", unlock: 1000, daily: 700.00, totalProfit: 255500.00, img: customLogoImg },
+        { level: 8, title: "VIP-8", unlock: 2000, daily: 1500.00, totalProfit: 547500.00, img: customLogoImg },
+        { level: 9, title: "VIP-9", unlock: 5000, daily: 3750.00, totalProfit: 1368750.00, img: customLogoImg },
+        { level: 10, title: "VIP-10", unlock: 10000, daily: 7500.00, totalProfit: 2737500.00, img: customLogoImg },
+        { level: 11, title: "VIP-11", unlock: 20000, daily: 16000.00, totalProfit: 5840000.00, img: customLogoImg }
     ];
 
-    async function fetchUserData() {
-        try {
-            let res = await fetch('/api/me', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-user-id': userId }
-            });
-            let data = await res.json();
-            if (data.ok) {
-                userData = data.data;
-                updateUIValues();
-            }
-        } catch (e) {
-            console.error('Fetch user error:', e);
-        }
-    }
-
     function updateUIValues() {
-        document.getElementById('main-balance').innerText = userData.balance.toFixed(2);
-        document.getElementById('withdraw-avail-bal').innerText = userData.balance.toFixed(2);
-        document.getElementById('me-total-bal').innerText = userData.balance.toFixed(2);
-        document.getElementById('recharge-pool-balance').innerText = userData.rechargePool.toFixed(2);
-        document.getElementById('me-recharge-amt').innerText = userData.totalRecharge.toFixed(2);
-        document.getElementById('lw-chances-count').innerText = userData.wheelChances || 1;
+        document.getElementById('main-balance').innerText = userBalance.toFixed(2);
+        document.getElementById('withdraw-avail-bal').innerText = userBalance.toFixed(2);
+        document.getElementById('me-total-bal').innerText = userBalance.toFixed(2);
+        document.getElementById('recharge-pool-balance').innerText = rechargePool.toFixed(2);
+        document.getElementById('me-recharge-amt').innerText = totalRecharge.toFixed(2);
+        document.getElementById('lw-chances-count').innerText = wheelChances;
         
-        let highestVip = Math.max(...(userData.unlockedPlans || [1]));
+        let highestVip = Math.max(...unlockedPlans);
         document.getElementById('user-vip-badge').innerText = `VIP-${highestVip}`;
         document.getElementById('profile-vip-txt').innerText = `VIP-${highestVip}`;
 
+        renderRecords();
+        renderTaskHall();
         renderPlans();
+        if (isAdmin) renderAdminRequests();
+    }
+
+    document.getElementById('withdraw-amount-input').addEventListener('input', function() {
+        let val = parseFloat(this.value) || 0;
+        document.getElementById('actually-received-amt').innerText = val.toFixed(2);
+    });
+
+    function startTaskCountdown() {
+        function updateTimer() {
+            let now = new Date();
+            let nextReset = new Date(now);
+            nextReset.setUTCHours(24, 0, 0, 0); 
+            
+            let diff = nextReset.getTime() - now.getTime();
+            if (diff <= 0) { diff = 86400000; }
+
+            let hours = Math.floor(diff / (1000 * 60 * 60));
+            let minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            let seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+            let timerStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            let timerEl = document.getElementById('task-countdown-timer');
+            if (timerEl) timerEl.innerText = timerStr;
+        }
+        updateTimer();
+        setInterval(updateTimer, 1000);
+    }
+    startTaskCountdown();
+
+    let activeTaskSubTab = 'progress';
+
+    function switchTaskSubTab(tab) {
+        activeTaskSubTab = tab;
+        document.getElementById('btn-in-progress').classList.toggle('active', tab === 'progress');
+        document.getElementById('btn-completed').classList.toggle('active', tab === 'completed');
         renderTaskHall();
     }
 
     function renderTaskHall() {
         let wrapper = document.getElementById('task-list-wrapper');
+        let totalCountEl = document.getElementById('task-total-count');
+        let remCountEl = document.getElementById('task-rem-count');
         if (!wrapper) return;
+
+        let eligiblePlans = vipPlans.filter(p => {
+            let isOwned = unlockedPlans.includes(p.level);
+            if (!isOwned) return false;
+            if (p.level === 1 && !isFirstDay) {
+                return false;
+            }
+            return true;
+        });
+
+        let isTeamLocked = (!isFirstDay && teamActiveRecharges <= 0);
+
+        let totalTasksCount = isTeamLocked ? 0 : eligiblePlans.length;
+        let completedCount = isTeamLocked ? 0 : eligiblePlans.filter(lvlObj => completedTasksToday.includes(lvlObj.level)).length;
+        let remainingCount = totalTasksCount - completedCount;
+
+        totalCountEl.innerText = totalTasksCount;
+        remCountEl.innerText = remainingCount;
+
         wrapper.innerHTML = '';
 
-        let eligiblePlans = vipPlans.filter(p => (userData.unlockedPlans || [1]).includes(p.level));
-        document.getElementById('task-total-count').innerText = eligiblePlans.length;
-        document.getElementById('task-rem-count').innerText = eligiblePlans.length - (userData.completedTasks || []).length;
+        if (isTeamLocked) {
+            wrapper.innerHTML = `
+                <div style="background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 24px; text-align: center; margin-top: 10px;">
+                    <i class="fa-solid fa-users-viewfinder" style="font-size: 36px; color: #d97706; margin-bottom: 10px;"></i>
+                    <div style="font-size: 14px; font-weight: 800; color: #1e293b; margin-bottom: 6px;">Team Active Deposit Required</div>
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 16px; line-height: 1.4;">
+                        From your 2nd day onwards, daily tasks require active team referrals or deposits. Invite friends to complete daily tasks!
+                    </div>
+                    <button class="ap-btn" style="width: 100%; border-radius: 10px;" onclick="switchTab('team')">Invite friends to complete daily task</button>
+                </div>
+            `;
+            return;
+        }
 
-        eligiblePlans.forEach(p => {
-            let isDone = (userData.completedTasks || []).includes(p.level);
-            wrapper.innerHTML += `
+        let filteredPlans = eligiblePlans.filter(p => {
+            let isDone = completedTasksToday.includes(p.level);
+            return activeTaskSubTab === 'progress' ? !isDone : isDone;
+        });
+
+        if (filteredPlans.length === 0) {
+            wrapper.innerHTML = `<div style="font-size: 12px; color: #64748b; padding: 30px 0;">No ${activeTaskSubTab === 'progress' ? 'in-progress' : 'completed'} tasks found for your active plans today.</div>`;
+            return;
+        }
+
+        filteredPlans.forEach(p => {
+            let isDone = completedTasksToday.includes(p.level);
+            let cardHtml = `
                 <div class="task-item-card">
-                    <img src="${p.img}" class="task-item-thumb">
+                    <img src="${p.img}" class="task-item-thumb" alt="Mining Task">
                     <div class="task-item-details">
                         <div class="task-item-title">UnitedPay (${p.title})</div>
-                        <div class="task-item-row"><span>Income</span> <b class="green-val">+${p.daily.toFixed(2)} USDT</b></div>
+                        <div class="task-item-row"><span>Price</span> <b>${p.unlock.toFixed(2)}</b></div>
+                        <div class="task-item-row"><span>Income</span> <b class="${isDone ? 'green-val' : ''}">+${p.daily.toFixed(2)} USDT</b></div>
                         ${isDone 
                             ? `<button class="to-complete-btn done-btn">Completed ✓</button>`
-                            : `<button class="to-complete-btn" onclick="completeTask(${p.level}, ${p.daily})">To complete</button>`
+                            : `<button class="to-complete-btn" onclick="completePlanTask(${p.level})">To complete</button>`
                         }
                     </div>
-                </div>`;
+                </div>
+            `;
+            wrapper.innerHTML += cardHtml;
         });
     }
 
-    async function completeTask(level, reward) {
-        let res = await fetch('/api/task/complete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
-            body: JSON.stringify({ level, reward })
-        });
-        let data = await res.json();
-        if (data.ok) {
-            showActionPopup('success', 'Claimed', `+$${reward.toFixed(2)} USDT added!`);
-            fetchUserData();
-        } else {
-            showToast(data.error);
+    function completePlanTask(level) {
+        if (completedTasksToday.includes(level)) {
+            showToast('Task already claimed for today!');
+            return;
         }
+
+        let plan = vipPlans.find(p => p.level === level);
+        if(!plan) return;
+
+        userBalance += plan.daily;
+        completedTasksToday.push(level);
+
+        localStorage.setItem(`unitedpay_bal_${userId}`, userBalance.toFixed(2));
+        localStorage.setItem(`unitedpay_completed_tasks_${userId}_${todayDateStr}`, JSON.stringify(completedTasksToday));
+
+        transactionHistory.unshift({ type: `Task Profit (${plan.title})`, amount: plan.daily, date: new Date().toLocaleString(), status: 'Approved' });
+        localStorage.setItem(`unitedpay_tx_${userId}`, JSON.stringify(transactionHistory));
+
+        updateUIValues();
+        showActionPopup('success', 'Task Claimed!', `Successfully claimed +$${plan.daily.toFixed(2)} USDT from ${plan.title} task! Added to withdrawable balance.`);
     }
 
     function renderPlans() {
         let vipContainer = document.getElementById('vip-levels-wrapper');
         if(!vipContainer) return;
         vipContainer.innerHTML = '';
+
         vipPlans.forEach(p => {
-            let isUnlocked = (userData.unlockedPlans || [1]).includes(p.level);
-            vipContainer.innerHTML += `
+            let isUnlocked = unlockedPlans.includes(p.level);
+            let html = `
                 <div class="vip-card-item">
-                    <div class="vip-card-header ${isUnlocked ? 'active-vip' : ''}">${p.title} ${isUnlocked ? '• Active' : ''}</div>
+                    <div class="vip-card-header ${isUnlocked ? 'active-vip' : ''}">
+                        ${p.title} ${isUnlocked ? '• Active' : ''}
+                    </div>
                     <div class="vip-card-body">
-                        <img src="${p.img}" class="vip-card-thumb">
+                        <img src="${p.img}" class="vip-card-thumb" alt="Mining Rig">
                         <div class="vip-details-table">
+                            <div class="vip-row-line"><span>Daily tasks</span> <b>1</b></div>
+                            <div class="vip-row-line"><span>Simple interest</span> <b class="val-green">${p.daily.toFixed(2)}</b></div>
                             <div class="vip-row-line"><span>Daily profit</span> <b class="val-green">${p.daily.toFixed(2)} USDT</b></div>
-                            <div class="vip-row-line"><span>Total profit</span> <b>${p.totalProfit.toFixed(2)} USDT</b></div>
+                            <div class="vip-row-line"><span>The total profit</span> <b>${p.totalProfit.toLocaleString('en-US', {minimumFractionDigits: 2})} USDT</b></div>
                         </div>
                     </div>
                     <div class="vip-card-footer">
-                        <button class="unlock-vip-btn ${isUnlocked ? 'activated' : ''}" onclick="unlockVip(${p.level}, ${p.unlock})">
-                            ${isUnlocked ? 'Unlocked ✓' : `${p.unlock}.00 USDT Unlock`}
+                        <button class="unlock-vip-btn ${isUnlocked ? 'activated' : ''}" onclick="unlockVipPlan(${p.level}, ${p.unlock})">
+                            ${isUnlocked ? 'Unlocked ✓' : `${p.unlock}.00 USDT Unlock now`}
                         </button>
                     </div>
-                </div>`;
+                </div>
+            `;
+            vipContainer.innerHTML += html;
         });
     }
 
-    async function unlockVip(level, unlockAmount) {
-        let res = await fetch('/api/vip/unlock', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
-            body: JSON.stringify({ level, unlockAmount })
-        });
-        let data = await res.json();
-        if (data.ok) {
-            showActionPopup('success', 'Unlocked', `VIP-${level} unlocked!`);
-            fetchUserData();
-        } else {
-            showActionPopup('error', 'Failed', data.error);
+    function unlockVipPlan(level, unlockAmount) {
+        if (unlockedPlans.includes(level)) {
+            showActionPopup('success', 'Already Unlocked', `VIP-${level} is already unlocked on your account.`);
+            return;
         }
-    }
-
-    async function submitRechargeRequest() {
-        let amount = parseFloat(document.getElementById('recharge-usd-input').value);
-        let txid = document.getElementById('recharge-txid').value.trim();
-        if(!amount || !txid) { showToast('Enter amount and TxID'); return; }
-
-        let res = await fetch('/api/recharge/submit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
-            body: JSON.stringify({ amount, txid })
-        });
-        let data = await res.json();
-        if (data.ok) {
-            showActionPopup('success', 'Submitted', 'Recharge sent to admin.');
-            switchTab('home');
+        if (rechargePool < unlockAmount) {
+            showActionPopup('error', 'Insufficient Recharge Balance', `You need $${unlockAmount}.00 in your recharge pool to unlock VIP-${level}. Please recharge your account first.`);
+            return;
         }
+
+        rechargePool -= unlockAmount;
+        unlockedPlans.push(level);
+
+        localStorage.setItem(`unitedpay_recharge_pool_${userId}`, rechargePool.toFixed(2));
+        localStorage.setItem(`unitedpay_unlocked_plans_${userId}`, JSON.stringify(unlockedPlans));
+        
+        transactionHistory.unshift({ type: `VIP Unlock (${'VIP-' + level})`, amount: -unlockAmount, date: new Date().toLocaleString(), status: 'Approved' });
+        localStorage.setItem(`unitedpay_tx_${userId}`, JSON.stringify(transactionHistory));
+
+        updateUIValues();
+        showActionPopup('success', 'VIP Unlocked!', `Successfully unlocked vip ${level}`);
     }
 
-    async function requestWithdrawal() {
-        let amount = parseFloat(document.getElementById('withdraw-amount-input').value);
-        let address = document.getElementById('withdraw-addr').value.trim();
-        if(!amount || !address) { showToast('Enter amount and address'); return; }
+    let currentSlide = 0;
+    setInterval(() => {
+        let slides = document.querySelectorAll('.banner-slide');
+        if(slides.length === 0) return;
+        slides[currentSlide].classList.remove('active');
+        currentSlide = (currentSlide + 1) % slides.length;
+        slides[currentSlide].classList.add('active');
+    }, 4000);
 
-        let res = await fetch('/api/withdraw/submit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
-            body: JSON.stringify({ amount, address })
-        });
-        let data = await res.json();
-        if (data.ok) {
-            showActionPopup('success', 'Submitted', 'Withdrawal requested.');
-            fetchUserData();
-            switchTab('home');
-        } else {
-            showToast(data.error);
+    /* LUCKY WHEEL FUNCTIONS */
+    function openLuckyWheel() {
+        document.getElementById('lucky-wheel-modal').classList.add('active');
+        updateUIValues();
+    }
+    function closeLuckyWheel() {
+        document.getElementById('lucky-wheel-modal').classList.remove('active');
+    }
+
+    function spinWheel() {
+        if (wheelChances <= 0) {
+            showToast('No remaining spin chances! Invite friends to get more.');
+            return;
         }
+        wheelChances--;
+        localStorage.setItem(`unitedpay_wheel_chances_${userId}`, wheelChances);
+        updateUIValues();
+
+        let svg = document.getElementById('wheel-svg');
+        svg.style.transform = `rotate(${360 * 5 + 35}deg)`;
+        
+        setTimeout(() => {
+            svg.style.transition = 'none';
+            svg.style.transform = `rotate(35deg)`;
+            setTimeout(() => { svg.style.transition = 'transform 4s cubic-bezier(0.15, 0.9, 0.1, 1)'; }, 50);
+
+            let reward = 0.10;
+            userBalance += reward;
+            localStorage.setItem(`unitedpay_bal_${userId}`, userBalance.toFixed(2));
+
+            transactionHistory.unshift({ type: 'Lucky Wheel Reward', amount: reward, date: new Date().toLocaleString(), status: 'Approved' });
+            localStorage.setItem(`unitedpay_tx_${userId}`, JSON.stringify(transactionHistory));
+
+            updateUIValues();
+            showActionPopup('success', 'Congratulations!', `You won +$${reward.toFixed(2)} USDT from the Lucky Wheel! Added to withdrawable balance.`);
+        }, 4000);
     }
+
+    const randomChars = "abcdefghijklmnopqrstuvwxyz0123456789";
+    function generateRandomMaskedId() {
+        let prefix = '@' + randomChars[Math.floor(Math.random() * randomChars.length)] + randomChars[Math.floor(Math.random() * randomChars.length)];
+        let suffix = randomChars[Math.floor(Math.random() * randomChars.length)] + randomChars[Math.floor(Math.random() * randomChars.length)];
+        return `${prefix}******${suffix}`;
+    }
+
+    function startLivePaymentsTicker() {
+        setInterval(() => {
+            let container = document.getElementById('live-member-list');
+            if(!container) return;
+
+            let randomAmt = (Math.random() * (5000 - 10) + 10).toFixed(2);
+            let randomVip = Math.floor(Math.random() * 11) + 1;
+            let maskedId = generateRandomMaskedId();
+
+            let newCard = document.createElement('div');
+            newCard.className = 'member-pay-card';
+            newCard.innerHTML = `
+                <div class="member-pay-left">+$${Number(randomAmt).toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+                <div class="member-pay-right">
+                    <div class="member-masked-id">${maskedId}</div>
+                    <div class="member-vip-pill">VIP-${randomVip}</div>
+                </div>
+            `;
+
+            container.prepend(newCard);
+            if(container.children.length > 5) {
+                container.lastElementChild.remove();
+            }
+        }, 3500);
+    }
+    startLivePaymentsTicker();
 
     function switchTab(tabId) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
         document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        
         let targetTab = document.getElementById('tab-' + tabId);
         if(targetTab) targetTab.classList.add('active');
+        
         let targetNav = document.getElementById('nav-' + tabId);
         if(targetNav) targetNav.classList.add('active');
+        
+        updateUIValues();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    function showToast(msg) {
-        let toast = document.getElementById('toast-notification');
-        document.getElementById('toast-msg').innerText = msg;
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 3000);
+    function renderRecords() {
+        let finList = document.getElementById('financial-records-list');
+        let witList = document.getElementById('withdrawal-records-list');
+        if(!finList || !witList) return;
+
+        finList.innerHTML = '';
+        witList.innerHTML = '';
+
+        if(transactionHistory.length === 0) {
+            finList.innerHTML = `<div style="font-size: 11.5px; color: #64748b; text-align: center; padding: 20px;">No financial records found yet.</div>`;
+            witList.innerHTML = `<div style="font-size: 11.5px; color: #64748b; text-align: center; padding: 20px;">No withdrawal records found yet.</div>`;
+            return;
+        }
+
+        let hasWithdrawals = false;
+
+        transactionHistory.forEach(tx => {
+            let statusColor = '#16a34a';
+            if (tx.status === 'Pending') statusColor = '#d97706';
+            if (tx.status === 'Rejected') statusColor = '#dc2626';
+
+            let itemHtml = `
+                <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; margin-bottom: 6px;">
+                    <div>
+                        <div style="font-weight: 800; color: #1e293b;">${tx.type}</div>
+                        <div style="font-size: 10px; color: #64748b;">${tx.date}</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-weight: 800; color: ${tx.amount > 0 ? '#16a34a' : '#dc2626'};">
+                            ${tx.amount > 0 ? '+' : ''}$${Math.abs(tx.amount).toFixed(2)} USDT
+                        </div>
+                        <div style="font-size: 10px; font-weight: 800; color: ${statusColor}; text-transform: uppercase;">${tx.status || 'Approved'}</div>
+                    </div>
+                </div>
+            `;
+            finList.innerHTML += itemHtml;
+
+            if(tx.type.includes('Withdrawal')) {
+                hasWithdrawals = true;
+                witList.innerHTML += itemHtml;
+            }
+        });
+
+        if(!hasWithdrawals) {
+            witList.innerHTML = `<div style="font-size: 11.5px; color: #64748b; text-align: center; padding: 20px;">No withdrawals requested yet.</div>`;
+        }
+    }
+
+    // Admin Panel Functions
+    function renderAdminRequests() {
+        let adminList = document.getElementById('admin-requests-list');
+        if(!adminList) return;
+        adminList.innerHTML = '';
+
+        globalRequests = JSON.parse(localStorage.getItem(`unitedpay_global_requests`) || '[]');
+        let pendingReqs = globalRequests.filter(r => r.status === 'Pending');
+
+        if(pendingReqs.length === 0) {
+            adminList.innerHTML = `<div style="font-size: 12px; color: #64748b; text-align: center; padding: 20px;">No pending user requests.</div>`;
+            return;
+        }
+
+        pendingReqs.forEach((req, idx) => {
+            adminList.innerHTML += `
+                <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 6px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 800; color: #372652;">
+                        <span>User ID: ${req.userId}</span>
+                        <span style="color: #d97706; text-transform: uppercase;">${req.type}</span>
+                    </div>
+                    <div style="font-size: 11.5px; color: #1e293b;">Amount: <b>$${req.amount.toFixed(2)} USDT</b></div>
+                    ${req.txid ? `<div style="font-size: 11px; color: #64748b; word-break: break-all;">TxID: ${req.txid}</div>` : ''}
+                    ${req.address ? `<div style="font-size: 11px; color: #64748b; word-break: break-all;">Address: ${req.address}</div>` : ''}
+                    <div style="display: flex; gap: 8px; margin-top: 6px;">
+                        <button onclick="handleAdminAction(${req.id}, 'Approved')" style="flex: 1; background: #16a34a; color: #fff; border: none; border-radius: 8px; padding: 6px; font-size: 11px; font-weight: 800; cursor: pointer;">Approved</button>
+                        <button onclick="handleAdminAction(${req.id}, 'Rejected')" style="flex: 1; background: #dc2626; color: #fff; border: none; border-radius: 8px; padding: 6px; font-size: 11px; font-weight: 800; cursor: pointer;">Rejected</button>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    function handleAdminAction(reqId, status) {
+        globalRequests = JSON.parse(localStorage.getItem(`unitedpay_global_requests`) || '[]');
+        let req = globalRequests.find(r => r.id === reqId);
+        if(!req) return;
+
+        req.status = status;
+        localStorage.setItem(`unitedpay_global_requests`, JSON.stringify(globalRequests));
+
+        // Update target user's local state
+        let targetUserBal = parseFloat(localStorage.getItem(`unitedpay_bal_${req.userId}`) || '0.00');
+        let targetUserRechargePool = parseFloat(localStorage.getItem(`unitedpay_recharge_pool_${req.userId}`) || '0.00');
+        let targetUserTotalRecharge = parseFloat(localStorage.getItem(`unitedpay_recharge_${req.userId}`) || '0.00');
+        let targetUserTx = JSON.parse(localStorage.getItem(`unitedpay_tx_${req.userId}`) || '[]');
+
+        // Find and update in user transaction history
+        let userTxItem = targetUserTx.find(t => t.reqId === reqId);
+        if(userTxItem) {
+            userTxItem.status = status;
+        }
+
+        if(status === 'Approved') {
+            if(req.type === 'Recharge') {
+                targetUserRechargePool += req.amount;
+                targetUserTotalRecharge += req.amount;
+                localStorage.setItem(`unitedpay_recharge_pool_${req.userId}`, targetUserRechargePool.toFixed(2));
+                localStorage.setItem(`unitedpay_recharge_${req.userId}`, targetUserTotalRecharge.toFixed(2));
+            } else if(req.type === 'Withdrawal') {
+                // Funds already held/deducted
+            }
+        } else if(status === 'Rejected') {
+            if(req.type === 'Withdrawal') {
+                // Refund balance if rejected
+                targetUserBal += req.amount;
+                localStorage.setItem(`unitedpay_bal_${req.userId}`, targetUserBal.toFixed(2));
+            }
+        }
+
+        localStorage.setItem(`unitedpay_tx_${req.userId}`, JSON.stringify(targetUserTx));
+
+        showToast(`Request ${status} successfully!`);
+        updateUIValues();
+    }
+
+    function closeAnnouncement() {
+        document.getElementById('announcement-modal').classList.remove('active');
+    }
+    function openAnnouncementModal() {
+        document.getElementById('announcement-modal').classList.add('active');
+    }
+    function openTelegramChannel() {
+        window.open('https://t.me/UnitedPayBot', '_blank');
+    }
+    function openSupportChat() {
+        window.open('https://t.me/UnitedPayBot', '_blank');
+    }
+    function openAppDownloadModal() {
+        showActionPopup('success', 'UnitedPay App', 'Android APK & iOS mobile app is ready for download in our official channel.');
+    }
+    function openCompanyProfileModal() {
+        showActionPopup('success', 'Company Profile', 'UnitedPay is a leading global investment platform operating state-of-the-art secure automated financial facilities worldwide.');
     }
 
     function showActionPopup(type, title, message) {
+        const ic = document.getElementById('ap-icon');
+        ic.className = 'ap-icon ' + type;
+        ic.innerHTML = type === 'success' ? '<i class="fa-solid fa-check"></i>' : '<i class="fa-solid fa-xmark"></i>';
         document.getElementById('ap-title').innerText = title;
-        document.getElementById('ap-msg').innerText = message;
+        let msgEl = document.getElementById('ap-msg');
+        if (message) {
+            msgEl.innerText = message;
+            msgEl.style.display = 'block';
+        } else {
+            msgEl.style.display = 'none';
+        }
         document.getElementById('action-popup').classList.add('active');
     }
     function closeActionPopup() { document.getElementById('action-popup').classList.remove('active'); }
-    function closeAnnouncement() { document.getElementById('announcement-modal').classList.remove('active'); }
-    function openAnnouncementModal() { document.getElementById('announcement-modal').classList.add('active'); }
-    function openLuckyWheel() { document.getElementById('lucky-wheel-modal').classList.add('active'); }
-    function closeLuckyWheel() { document.getElementById('lucky-wheel-modal').classList.remove('active'); }
-    function openTelegramChannel() { window.open('https://t.me/UnitedPayTg_bot', '_blank'); }
-    function openSupportChat() { window.open('https://t.me/UnitedPayTg_bot', '_blank'); }
-    function openAppDownloadModal() { showActionPopup('success', 'App', 'Available on official bot channel.'); }
-    function openCompanyProfileModal() { showActionPopup('success', 'Profile', 'UnitedPay Global.'); }
-    function copyRefLink() { navigator.clipboard.writeText(document.getElementById('ref-link').value); showToast('Copied!'); }
+    
+    function showToast(message) {
+        let toast = document.getElementById('toast-notification');
+        document.getElementById('toast-msg').innerText = message;
+        toast.classList.add('show');
+        setTimeout(() => { toast.classList.remove('show'); }, 3000);
+    }
 
-    window.addEventListener('load', () => {
-        fetchUserData();
-        setTimeout(() => {
-            let splash = document.getElementById('splash-screen');
-            if(splash) { splash.style.opacity = '0'; setTimeout(() => splash.remove(), 500); }
-        }, 1200);
-    });
+    function copyRefLink() {
+        navigator.clipboard.writeText(userRefLink).then(() => {
+            showToast('Referral link copied successfully!');
+        }).catch(() => {
+            showActionPopup('success', 'Copied', userRefLink);
+        });
+    }
+
+    function copyPromoCode() {
+        navigator.clipboard.writeText('30zwxb').then(() => {
+            showToast('Invitation code copied!');
+        });
+    }
+
+    function copyDepositAddress() {
+        let addr = document.getElementById('company-deposit-addr').value;
+        navigator.clipboard.writeText(addr).then(() => {
+            showToast('Deposit address copied!');
+        });
+    }
+
+    function submitRechargeRequest() {
+        let amt = parseFloat(document.getElementById('recharge-usd-input').value);
+        let txid = document.getElementById('recharge-txid').value.trim();
+        if(!amt || amt <= 0) {
+            showToast('Enter valid recharge amount');
+            return;
+        }
+        if(!txid) {
+            showToast('Please enter transaction hash (TxID)');
+            return;
+        }
+
+        let reqId = Date.now();
+        let newReq = { id: reqId, userId: userId, type: 'Recharge', amount: amt, txid: txid, status: 'Pending' };
+        
+        globalRequests.push(newReq);
+        localStorage.setItem(`unitedpay_global_requests`, JSON.stringify(globalRequests));
+
+        let txItem = { reqId: reqId, type: 'Recharge', amount: amt, date: new Date().toLocaleString(), status: 'Pending' };
+        transactionHistory.unshift(txItem);
+        localStorage.setItem(`unitedpay_tx_${userId}`, JSON.stringify(transactionHistory));
+
+        updateUIValues();
+        showActionPopup('success', 'Submitted', `Recharge request submitted for review. Waiting for admin approval.`);
+        document.getElementById('recharge-txid').value = '';
+        switchTab('home');
+    }
+
+    function requestWithdrawal() {
+        let amt = parseFloat(document.getElementById('withdraw-amount-input').value);
+        let addr = document.getElementById('withdraw-addr').value.trim();
+        if(!amt || amt < 6) {
+            showToast('Minimum withdrawal amount is 6.00 USDT');
+            return;
+        }
+        if(!addr) {
+            showToast('Enter withdrawal wallet address');
+            return;
+        }
+        if(amt > userBalance) {
+            showToast('Insufficient withdrawable balance');
+            return;
+        }
+
+        userBalance -= amt;
+        localStorage.setItem(`unitedpay_bal_${userId}`, userBalance.toFixed(2));
+
+        let reqId = Date.now();
+        let newReq = { id: reqId, userId: userId, type: 'Withdrawal', amount: amt, address: addr, status: 'Pending' };
+        
+        globalRequests.push(newReq);
+        localStorage.setItem(`unitedpay_global_requests`, JSON.stringify(globalRequests));
+
+        let txItem = { reqId: reqId, type: 'Withdrawal', amount: -amt, date: new Date().toLocaleString(), status: 'Pending' };
+        transactionHistory.unshift(txItem);
+        localStorage.setItem(`unitedpay_tx_${userId}`, JSON.stringify(transactionHistory));
+
+        updateUIValues();
+        showActionPopup('success', 'Withdrawal Requested', `Withdrawal submitted. Waiting for admin approval.`);
+        document.getElementById('withdraw-amount-input').value = '';
+        document.getElementById('withdraw-addr').value = '';
+        document.getElementById('actually-received-amt').innerText = '0.00';
+        switchTab('account');
+    }
+
+    window.addEventListener('load', () => {  
+        setTimeout(() => {  
+            let splash = document.getElementById('splash-screen');  
+            if(splash) {
+                splash.style.opacity = '0';  
+                setTimeout(() => splash.remove(), 500);  
+            }
+        }, 1500);  
+    });  
 </script>  
 </body>  
 </html>
