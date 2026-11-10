@@ -82,31 +82,93 @@ function fmtCoin(n, sym) {
 }
 
 const priceCache = {};
+const priceInflight = {};
+const PRICE_FRESH_MS = 20 * 1000;          // reuse a price for 20 seconds
+const PRICE_STALE_MS = 15 * 60 * 1000;     // if every source is down, last good price is OK for 15 minutes
+
+async function getJson(url) {
+    const r = await fetch(url, {
+        signal: AbortSignal.timeout(4500),
+        headers: { 'accept': 'application/json', 'user-agent': 'Mozilla/5.0 (compatible; TronRichBot/1.0)' }
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+}
+
+// Many independent sources: some exchanges block certain hosting regions (e.g. Binance on US servers),
+// so we ask all of them at once and use the median of whatever answers.
+const PRICE_SOURCES = [
+    { name: 'binance',        get: async s => parseFloat((await getJson(`https://api.binance.com/api/v3/ticker/price?symbol=${s}USDT`)).price) },
+    { name: 'binance-vision', get: async s => parseFloat((await getJson(`https://data-api.binance.vision/api/v3/ticker/price?symbol=${s}USDT`)).price) },
+    { name: 'coinbase',       get: async s => parseFloat((await getJson(`https://api.coinbase.com/v2/prices/${s}-USD/spot`)).data.amount) },
+    { name: 'kraken',         get: async s => {
+        const pair = (s === 'BTC' ? 'XBT' : s) + 'USD';
+        const d = await getJson(`https://api.kraken.com/0/public/Ticker?pair=${pair}`);
+        const k = Object.keys(d.result || {})[0];
+        return parseFloat(d.result[k].c[0]);
+    } },
+    { name: 'okx',            get: async s => parseFloat((await getJson(`https://www.okx.com/api/v5/market/ticker?instId=${s}-USDT`)).data[0].last) },
+    { name: 'bybit',          get: async s => parseFloat((await getJson(`https://api.bybit.com/v5/market/tickers?category=spot&symbol=${s}USDT`)).result.list[0].lastPrice) },
+    { name: 'kucoin',         get: async s => parseFloat((await getJson(`https://api.kucoin.com/api/v1/market/orderbook/level1?symbol=${s}-USDT`)).data.price) },
+    { name: 'cryptocompare',  get: async s => Number((await getJson(`https://min-api.cryptocompare.com/data/price?fsym=${s}&tsyms=USD`)).USD) },
+    { name: 'coingecko',      get: async s => {
+        const id = COINGECKO_IDS[s];
+        if (!id) throw new Error('no coingecko id');
+        const d = await getJson(`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`);
+        return Number(d[id].usd);
+    } }
+];
+
+function medianOf(arr) {
+    const s = [...arr].sort((x, y) => x - y);
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+async function fetchAllPrices(sym) {
+    const settled = await Promise.allSettled(PRICE_SOURCES.map(async src => {
+        const p = await src.get(sym);
+        if (!(p > 0)) throw new Error('bad price');
+        return { name: src.name, price: p };
+    }));
+    const ok = [];
+    const failed = {};
+    settled.forEach((r, i) => {
+        if (r.status === 'fulfilled') ok.push(r.value);
+        else failed[PRICE_SOURCES[i].name] = String((r.reason && r.reason.message) || r.reason);
+    });
+    let price = 0;
+    if (ok.length) {
+        const m0 = medianOf(ok.map(o => o.price));
+        const near = ok.filter(o => Math.abs(o.price - m0) / m0 <= 0.03);   // drop outliers
+        price = medianOf((near.length ? near : ok).map(o => o.price));
+    }
+    return { price, ok, failed };
+}
+
 async function getCoinPriceUsd(sym) {
     sym = String(sym || '').toUpperCase();
     if (STABLE.has(sym)) return 1;
 
     const cached = priceCache[sym];
-    if (cached && Date.now() - cached.time < 30000) return cached.price;
+    if (cached && Date.now() - cached.time < PRICE_FRESH_MS) return cached.price;
 
-    try {
-        const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym}USDT`, { signal: AbortSignal.timeout(5000) });
-        const d = await r.json();
-        const p = parseFloat(d.price);
-        if (p > 0) { priceCache[sym] = { price: p, time: Date.now() }; return p; }
-    } catch (e) {}
-
-    const cgId = COINGECKO_IDS[sym];
-    if (cgId) {
-        try {
-            const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cgId}&vs_currencies=usd`, { signal: AbortSignal.timeout(5000) });
-            const d = await r.json();
-            const p = Number(d && d[cgId] && d[cgId].usd);
-            if (p > 0) { priceCache[sym] = { price: p, time: Date.now() }; return p; }
-        } catch (e) {}
+    if (!priceInflight[sym]) {
+        priceInflight[sym] = (async () => {
+            try {
+                const { price, ok } = await fetchAllPrices(sym);
+                if (price > 0) {
+                    priceCache[sym] = { price, time: Date.now(), sources: ok.length };
+                    return price;
+                }
+            } catch (e) { console.log('price fetch error', sym, e.message); }
+            return 0;
+        })().finally(() => { delete priceInflight[sym]; });
     }
+    const fresh = await priceInflight[sym];
+    if (fresh > 0) return fresh;
 
-    if (cached) return cached.price;
+    if (cached && Date.now() - cached.time < PRICE_STALE_MS) return cached.price;
     if (sym === 'TRX') return 0.33;
     return 0;
 }
@@ -1302,6 +1364,13 @@ app.get('/api/quote', async (req, res) => {
         out.coinAmount = sym === 'TRX' ? trx : roundCoin(out.usdValue / price, sym);
     }
     res.json(out);
+});
+
+// Diagnostics: open /api/price-check?coin=SOL to see which price sources answer from this server
+app.get('/api/price-check', async (req, res) => {
+    const sym = parseCoinSymbol(req.query.coin || 'TRX');
+    const r = await fetchAllPrices(sym);
+    res.json({ symbol: sym, price: r.price, sources: r.ok, failed: r.failed });
 });
 
 app.post('/api/update-ghs', async (req, res) => {
