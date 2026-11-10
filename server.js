@@ -82,6 +82,24 @@ function expireUserPlan(u, now = Date.now()) {
 mongoose.connect(MONGO_URI)
     .then(async () => {
         console.log('✅ Connected to MongoDB Atlas Successfully!');
+
+        // ===== ONE-TIME FULL DATA RESET (sirf pehli baar chalega) =====
+        // Sab users, balances, deposits, withdrawals, referrals, pending requests delete ho jayenge.
+        // Dobara reset karna ho to RESET_KEY ka naam badal do (jaise 'data_reset_v2').
+        const RESET_KEY = 'data_reset_v1';
+        try {
+            const metaCol = mongoose.connection.collection('meta');
+            const alreadyReset = await metaCol.findOne({ _id: RESET_KEY });
+            if (!alreadyReset) {
+                await mongoose.model('User').deleteMany({});
+                await mongoose.model('PendingRequest').deleteMany({});
+                await metaCol.insertOne({ _id: RESET_KEY, at: Date.now() });
+                console.log('🧹 ALL DATA RESET TO ZERO (one-time)!');
+            }
+        } catch (err) {
+            console.log('Reset error:', err);
+        }
+
         try {
             const currentTime = Date.now();
             const allUsers = await mongoose.model('User').find({});
@@ -400,6 +418,36 @@ async function rejectRequest(reqDoc, u, reqId) {
     }
 }
 
+// ================== REFERRAL REGISTER (3 LEVELS) ==================
+async function registerReferral(user) {
+    try {
+        if (!user || !user.referredBy) return;
+        const chatId = String(user.id);
+        let currentRefId = String(user.referredBy);
+
+        for (let lvl = 1; lvl <= 3; lvl++) {
+            if (!currentRefId || currentRefId === chatId) break;
+            const refUser = await User.findOne({ id: currentRefId });
+            if (!refUser) break;
+
+            const key = `level${lvl}`;
+            if (!refUser.referrals) refUser.referrals = { level1: [], level2: [], level3: [] };
+            if (!Array.isArray(refUser.referrals[key])) refUser.referrals[key] = [];
+
+            const exists = refUser.referrals[key].some(r => (typeof r === 'string' ? r === chatId : r.id === chatId));
+            if (!exists) {
+                refUser.referrals[key].push({ id: chatId, joinedDate: 'Active', bonusEarned: 0 });
+                refUser.markModified(`referrals.${key}`);
+                await refUser.save();
+                sendTelegramMessage(refUser.id, `🎁 *New Level ${lvl} Referral Joined!*\nUser ID: \`${chatId}\``);
+            }
+            currentRefId = refUser.referredBy ? String(refUser.referredBy) : null;
+        }
+    } catch (err) {
+        console.log('registerReferral error:', err);
+    }
+}
+
 // ================== TELEGRAM WEBHOOK ==================
 async function handleWebhookLogic(req, res) {
     const update = req.body;
@@ -419,7 +467,7 @@ async function handleWebhookLogic(req, res) {
 
             if (text.startsWith('/start')) {
                 let referrerId = null;
-                const match = text.match(/\/start\s+(\d+)/);
+                const match = text.match(/\/start\s+(?:ref[_-]?)?(\d+)/i);
                 if (match && match[1]) {
                     referrerId = String(match[1]).trim();
                 }
@@ -447,46 +495,9 @@ async function handleWebhookLogic(req, res) {
                     }
                 }
 
-                if (isNewUser && user.referredBy) {
-                    const l1Id = user.referredBy;
-                    let refL1User = await User.findOne({ id: l1Id });
-                    if (refL1User) {
-                        let exists = refL1User.referrals.level1.some(r => (typeof r === 'string' ? r === chatId : r.id === chatId));
-                        if (!exists) {
-                            refL1User.referrals.level1.push({ id: chatId, joinedDate: 'Active', bonusEarned: 0 });
-                            refL1User.markModified('referrals.level1');
-                            await refL1User.save();
-                        }
-                    }
-                    sendTelegramMessage(l1Id, `🎁 *New Level 1 Referral Joined!*\nUser ID: \`${chatId}\``);
-
-                    const refL1 = await User.findOne({ id: l1Id });
-                    if (refL1 && refL1.referredBy) {
-                        const l2Id = refL1.referredBy;
-                        let refL2User = await User.findOne({ id: l2Id });
-                        if (refL2User) {
-                            let existsL2 = refL2User.referrals.level2.some(r => (typeof r === 'string' ? r === chatId : r.id === chatId));
-                            if (!existsL2) {
-                                refL2User.referrals.level2.push({ id: chatId, joinedDate: 'Active', bonusEarned: 0 });
-                                refL2User.markModified('referrals.level2');
-                                await refL2User.save();
-                            }
-                        }
-
-                        const refL2 = await User.findOne({ id: l2Id });
-                        if (refL2 && refL2.referredBy) {
-                            const l3Id = refL2.referredBy;
-                            let refL3User = await User.findOne({ id: l3Id });
-                            if (refL3User) {
-                                let existsL3 = refL3User.referrals.level3.some(r => (typeof r === 'string' ? r === chatId : r.id === chatId));
-                                if (!existsL3) {
-                                    refL3User.referrals.level3.push({ id: chatId, joinedDate: 'Active', bonusEarned: 0 });
-                                    refL3User.markModified('referrals.level3');
-                                    await refL3User.save();
-                                }
-                            }
-                        }
-                    }
+                // Referral har /start par check hoga (duplicate nahi banega)
+                if (user.referredBy) {
+                    await registerReferral(user);
                 }
 
                 const welcomeCaption =
@@ -1070,6 +1081,14 @@ app.get('/api/user/:userId', async (req, res) => {
     } else if (user.planActive && user.planExpiryDate && user.planExpiryDate > 0 && now >= user.planExpiryDate) {
         expireUserPlan(user, now);
         await user.save();
+    }
+
+    // Mini app se referral: /api/user/:id?ref=REFERRER_ID
+    const refParam = req.query.ref ? String(req.query.ref).replace(/\D/g, '') : '';
+    if (refParam && refParam !== userId && !user.referredBy) {
+        user.referredBy = refParam;
+        await user.save();
+        await registerReferral(user);
     }
 
     const price = await getTrxPrice();
