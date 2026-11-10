@@ -37,22 +37,32 @@ const FREE_DAILY_USD = 0.01;
 const STABLE = new Set(['USDT', 'USDC', 'BUSD', 'DAI', 'TUSD', 'FDUSD']);
 const COIN_ALIASES = {
     TRON: 'TRX', LITECOIN: 'LTC', BITCOIN: 'BTC', ETHEREUM: 'ETH', DOGECOIN: 'DOGE',
-    SOLANA: 'SOL', RIPPLE: 'XRP', TETHER: 'USDT', BINANCE: 'BNB'
+    SOLANA: 'SOL', RIPPLE: 'XRP', TETHER: 'USDT', BINANCE: 'BNB', TONCOIN: 'TON',
+    CARDANO: 'ADA', POLKADOT: 'DOT', AVALANCHE: 'AVAX', CHAINLINK: 'LINK', STELLAR: 'XLM'
 };
 const NETWORK_TOKENS = new Set(['BEP', 'TRC', 'ERC', 'BSC', 'POLYGON']);
 const COINGECKO_IDS = {
     TRX: 'tron', LTC: 'litecoin', BTC: 'bitcoin', ETH: 'ethereum', BNB: 'binancecoin',
     DOGE: 'dogecoin', SOL: 'solana', XRP: 'ripple', TON: 'the-open-network',
-    MATIC: 'matic-network', ADA: 'cardano', DOT: 'polkadot', BCH: 'bitcoin-cash'
+    MATIC: 'matic-network', ADA: 'cardano', DOT: 'polkadot', BCH: 'bitcoin-cash',
+    AVAX: 'avalanche-2', LINK: 'chainlink', SHIB: 'shiba-inu', XLM: 'stellar',
+    ATOM: 'cosmos', NEAR: 'near', APT: 'aptos', PEPE: 'pepe'
 };
 
 // "TRX (TRC-20)" -> TRX, "LTC (Litecoin)" -> LTC, "USDT (BEP-20)" / "BEP-20" -> USDT
 function parseCoinSymbol(coin) {
     const s = String(coin || '').toUpperCase().trim();
-    const m = s.match(/[A-Z0-9]+/);
-    let sym = m ? m[0] : 'TRX';
-    if (NETWORK_TOKENS.has(sym)) sym = 'USDT';
-    return COIN_ALIASES[sym] || sym;
+    const tokens = s.match(/[A-Z0-9]+/g) || [];
+    const isKnown = t => STABLE.has(t) || !!COINGECKO_IDS[t];
+    // checks every word: "Solana (SOL)" -> SOL, "LTC (Litecoin)" -> LTC, "USDT (BEP-20)" -> USDT
+    for (const t of tokens) {
+        if (NETWORK_TOKENS.has(t)) continue;
+        const a = COIN_ALIASES[t] || t;
+        if (isKnown(a)) return a;
+    }
+    if (tokens.length && NETWORK_TOKENS.has(tokens[0])) return 'USDT';
+    const first = tokens[0] || 'TRX';
+    return COIN_ALIASES[first] || first;
 }
 
 function coinDecimals(sym) {
@@ -61,7 +71,15 @@ function coinDecimals(sym) {
     return 6;
 }
 function roundCoin(n, sym) { return Number(Number(n).toFixed(coinDecimals(sym))); }
-function fmtCoin(n, sym) { return Number(n).toFixed(coinDecimals(sym)); }
+function fmtCoin(n, sym) {
+    let s = Number(n).toFixed(coinDecimals(sym));
+    if (s.includes('.')) {
+        s = s.replace(/0+$/, '');
+        const parts = s.split('.');
+        s = parts[0] + '.' + (parts[1] || '').padEnd(2, '0');
+    }
+    return s;
+}
 
 const priceCache = {};
 async function getCoinPriceUsd(sym) {
@@ -357,7 +375,7 @@ function adminRequestText(r, statusLine) {
             `👤 User: <code>${esc(r.userId)}</code>${uname}\n` +
             `🪙 Coin: <b>${esc(r.coin || r.coinSymbol || 'TRX')}</b>\n` +
             `💰 Amount: <b>${esc(reqAmountLabel(r))}</b>\n` +
-            `💵 Plan Value: <b>${esc(r.usdtAmount)} USDT</b>` +
+            `💵 Worth: ≈ ${esc(r.usdtAmount)} USDT` +
             (r.price > 0 && r.coinSymbol && !STABLE.has(r.coinSymbol) ? `\n📈 Live Rate: 1 ${esc(r.coinSymbol)} = $${Number(r.price).toFixed(4)}` : '') +
             `\n🔑 TxHash: <code>${esc(r.txHash)}</code>`;
     } else {
@@ -405,7 +423,7 @@ setInterval(async () => {
 
             sendTelegramMessage(
                 u.id,
-                `❌ <b>Plan Expired:</b> Your plan was expired plzz renew plan agin 🚀`
+                `❌ <b>Plan Expired:</b> Your mining plan has expired. Please renew your plan to keep earning 🚀`
             );
         }
     } catch (err) {
@@ -1126,7 +1144,7 @@ app.post('/admin/manage-plan', checkAdminAuth, async (req, res) => {
         u.planStartDate = 0;
         u.planExpiryDate = 0;
         await u.save();
-        sendTelegramMessage(userId, `❌ <b>Plan Expired:</b> Your plan was expired plzz renew plan agin 🚀`);
+        sendTelegramMessage(userId, `❌ <b>Plan Expired:</b> Your mining plan has expired. Please renew your plan to keep earning 🚀`);
         res.json({ success: true, message: `Plan deactivated successfully for user ${userId}!` });
     }
 });
@@ -1246,6 +1264,17 @@ app.get('/api/user/:userId', async (req, res) => {
         }
     });
 
+    data.deposits = (data.deposits || []).map(d => ({
+        ...d,
+        displayText: /[A-Za-z]/.test(String(d.amount || '')) ? String(d.amount) : `${d.usdtAmount || d.amount} USDT`
+    }));
+    data.withdrawals = (data.withdrawals || []).map(w => ({
+        ...w,
+        displayText: Number(w.coinAmount) > 0 && w.coinSymbol
+            ? `${fmtCoin(w.coinAmount, w.coinSymbol)} ${w.coinSymbol}`
+            : `${w.amount} TRX`
+    }));
+
     data.pendingUsd = Number(user.accruedUsd || 0) + accrueUsd(user, now);
     data.dailyUsd = dailyUsdRate(user, now);
     data.paidPlan = isPaidPlanActive(user, now);
@@ -1360,7 +1389,7 @@ app.post('/api/deposit', async (req, res) => {
     const liveAmount = roundCoin(exactUsdtVal / price, sym);
     // if the app already showed the user an amount (within 10% of live), keep that exact number; otherwise use live
     const clientAmount = parseFloat(String(amount || '').replace(/,/g, ''));
-    const coinAmount = (clientAmount > 0 && Math.abs(clientAmount - liveAmount) / liveAmount <= 0.10)
+    const coinAmount = (clientAmount > 0 && Math.abs(clientAmount - liveAmount) / liveAmount <= 0.15)
         ? roundCoin(clientAmount, sym)
         : liveAmount;
     const amountStr = `${fmtCoin(coinAmount, sym)} ${sym}`;
