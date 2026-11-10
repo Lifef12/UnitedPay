@@ -499,13 +499,12 @@ _Mine TRX & Crypto, invite friends and withdraw instantly._
 👥 Invite friends & earn 3-level commission
 💸 Withdraw straight to your wallet
 
-👇 *Tap Open Mining to start!*`;
+👇 *Join our official channel below!*`;
                 const startPhotoUrl = "https://cryptologos.cc/logos/tron-trx-logo.png?v=032";
 
                 const webAppMarkup = {
                     inline_keyboard: [
-                        [{ text: "📢 Join Official Channel", url: "https://t.me/TronRichMiningTg_Bot" }],
-                        [{ text: "⛏️ Open Mining", web_app: { url: VERCEL_APP_URL } }]
+                        [{ text: "📢 Join Official Channel", url: "https://t.me/unitedPay115" }]
                     ]
                 };
 
