@@ -1288,6 +1288,21 @@ app.post('/api/withdraw', async (req, res) => {
     res.json({ success: true, message: "Withdrawal request submitted successfully", newBalance: u.balance });
 });
 
+// Naye bot ka username automatic (Telegram getMe se) - app referral link ke liye
+let botUsernameCache = null;
+app.get('/api/bot-info', async (req, res) => {
+    try {
+        if (!botUsernameCache) {
+            const r = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getMe`);
+            const d = await r.json();
+            if (d && d.ok && d.result && d.result.username) botUsernameCache = d.result.username;
+        }
+        res.json({ success: !!botUsernameCache, username: botUsernameCache });
+    } catch (e) {
+        res.json({ success: false, username: null });
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}`);
