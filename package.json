@@ -1,10 +1,10 @@
 {
   "name": "tron-rich-backend",
   "version": "1.0.0",
-  "description": "TRON RICH Multi-Crypto Cloud Mining Backend API",
-  "main": "service.js",
+  "description": "TRON RICH Multi-Crypto Cloud Mining Backend",
+  "main": "server.js",
   "scripts": {
-    "start": "node service.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
