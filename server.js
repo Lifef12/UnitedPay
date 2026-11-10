@@ -3,13 +3,18 @@ const mongoose = require('mongoose');
 const app = express();
 
 // ================== SETTINGS ==================
-const BOT_TOKEN = "9203620878:AAHU2dPhOUFmIwI4DQWj3bJV1kIuY03UVgM";
-const ADMIN_ID = "7482625921";
+// Secrets ab Render -> Environment se aayenge (code mein nahi likhe)
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const ADMIN_ID = process.env.ADMIN_ID || "7482625921";
 const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "nbx12345";
-const VERCEL_APP_URL = "https://lite-core-0r7t.vercel.app/"; // Aap ise apne Frontend Vercel URL se replace kar sakte hain
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD; // zaroor set karo, default nahi hai
+const VERCEL_APP_URL = process.env.VERCEL_APP_URL || "https://lite-core-0r7t.vercel.app/";
+
+if (!BOT_TOKEN) console.error('❌ BOT_TOKEN environment variable missing!');
+if (!ADMIN_PASSWORD) console.error('❌ ADMIN_PASSWORD environment variable missing! Admin login disabled.');
+if (!MONGO_URI) console.error('❌ MONGO_URI environment variable missing!');
 
 // ================== MINING RULES ==================
 const PLAN_DURATION_MS = 10 * 24 * 60 * 60 * 1000;
@@ -591,7 +596,7 @@ app.get('/admin/login', (req, res) => {
 
 app.post('/admin/login', (req, res) => {
     const { username, password } = req.body;
-    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    if (ADMIN_PASSWORD && username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
         const sessionToken = "token_" + Math.random().toString(36).substring(2) + Date.now();
         activeSessions.add(sessionToken);
 
