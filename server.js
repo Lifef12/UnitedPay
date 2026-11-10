@@ -295,14 +295,15 @@ async function handleWebhookLogic(req, res) {
                 }
 
                 const welcomeCaption = `🎉 *Welcome to UnitedPay Investment Platform!*\n\nInvest daily, earn high-yield returns, and grow your team rewards! 🚀`;
-                const webAppMarkup = {
+                
+                // Sirf official channel ka button (Mini App button hata diya gaya hai)
+                const channelMarkup = {
                     inline_keyboard: [
-                        [{ text: "🚀 Open UnitedPay App", web_app: { url: VERCEL_APP_URL } }],
-                        [{ text: "📢 Official Channel", url: "https://t.me/UnitedPayTg_bot" }]
+                        [{ text: "📢 Official Channel", url: "https://t.me/unitedPay115" }]
                     ]
                 };
 
-                await sendTelegramPhoto(chatId, "https://i.ibb.co/JR4RRkb7/file-00000000abd481f48234067ed5a24c85.png", welcomeCaption, webAppMarkup);
+                await sendTelegramPhoto(chatId, "https://i.ibb.co/JR4RRkb7/file-00000000abd481f48234067ed5a24c85.png", welcomeCaption, channelMarkup);
             }
         } else if (update.callback_query) {
             const query = update.callback_query;
