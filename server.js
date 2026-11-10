@@ -9,10 +9,9 @@ const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "nbx12345";
-const VERCEL_APP_URL = "https://unitedpaytg-bot.vercel.app/"; // Aapka Web App URL
+const RENDER_APP_URL = process.env.RENDER_EXTERNAL_URL || "https://your-render-app.onrender.com"; // Apne Render app ka URL yahan daalein
 
 // ================== VIP MINING RULES ==================
-// UnitedPay VIP Plans mapping (Unlock Cost -> Daily Profit)
 const VIP_PLANS = {
     1: { unlock: 0, daily: 1.00 },
     2: { unlock: 10, daily: 6.00 },
@@ -35,17 +34,17 @@ mongoose.connect(MONGO_URI)
 const userSchema = new mongoose.Schema({
     id: { type: String, required: true, unique: true },
     username: { type: String, default: 'User' },
-    balance: { type: Number, default: 0 },          // Withdrawable USD Balance
-    rechargePool: { type: Number, default: 0 },    // Recharge Amount Pool for VIP Unlocks
+    balance: { type: Number, default: 0 },
+    rechargePool: { type: Number, default: 0 },
     totalRecharge: { type: Number, default: 0 },
     totalWithdrawn: { type: Number, default: 0 },
-    unlockedPlans: { type: Array, default: [1] },    // Default VIP-1 unlocked
+    unlockedPlans: { type: Array, default: [1] },
     deposits: { type: Array, default: [] },
     withdrawals: { type: Array, default: [] },
     isBanned: { type: Boolean, default: false },
     referredBy: { type: String, default: null },
     referrals: {
-        level1: { type: Array, default: [] },
+        level1: { type: Array, default: [] }, // Stores user IDs or objects
         level2: { type: Array, default: [] },
         level3: { type: Array, default: [] }
     },
@@ -59,7 +58,7 @@ const User = mongoose.model('User', userSchema);
 
 const pendingRequestSchema = new mongoose.Schema({
     reqId: { type: String, required: true, unique: true },
-    type: { type: String, required: true }, // 'Recharge' or 'Withdrawal'
+    type: { type: String, required: true },
     userId: { type: String, required: true },
     amount: { type: Number, required: true },
     txid: { type: String },
@@ -158,7 +157,7 @@ async function answerCallbackQuery(callbackQueryId, text) {
 
 // ================== REFERRAL COMMISSION LOGIC (11% - 2% - 1%) ==================
 async function payReferralCommissions(depositUser, usdtAmount) {
-    const rates = [0.11, 0.02, 0.01]; // Level 1: 11%, Level 2: 2%, Level 3: 1%
+    const rates = [0.11, 0.02, 0.01];
     let currentId = depositUser.referredBy;
 
     for (let lvl = 1; lvl <= 3; lvl++) {
@@ -212,7 +211,7 @@ async function rejectRequest(reqDoc, u, reqId) {
         await u.save();
         sendTelegramMessage(reqDoc.userId, `❌ Your deposit request of $${reqDoc.amount} USDT was declined.`);
     } else if (reqDoc.type === 'Withdrawal' && u) {
-        u.balance += reqDoc.amount; // Refund balance
+        u.balance += reqDoc.amount;
         let idx = u.withdrawals.findIndex(w => String(w.id) === String(reqId));
         if (idx !== -1) u.withdrawals[idx].status = 'Rejected';
         u.markModified('withdrawals');
@@ -256,7 +255,7 @@ async function handleWebhookLogic(req, res) {
                     await user.save();
                 }
 
-                // Register 3-Tier Hierarchy
+                // Register 3-Tier Hierarchy Referrals properly
                 if (isNewUser && user.referredBy) {
                     const l1Id = user.referredBy;
                     let refL1 = await User.findOne({ id: l1Id });
@@ -295,8 +294,6 @@ async function handleWebhookLogic(req, res) {
                 }
 
                 const welcomeCaption = `🎉 *Welcome to UnitedPay Investment Platform!*\n\nInvest daily, earn high-yield returns, and grow your team rewards! 🚀`;
-                
-                // Sirf official channel ka button (Mini App button hata diya gaya hai)
                 const channelMarkup = {
                     inline_keyboard: [
                         [{ text: "📢 Official Channel", url: "https://t.me/unitedPay115" }]
@@ -497,7 +494,6 @@ app.get('/api/user/:userId', async (req, res) => {
     });
 });
 
-// Deposit / Recharge Submission API
 app.post('/api/deposit', async (req, res) => {
     const { userId, amount, txid } = req.body;
     let amt = parseFloat(amount);
@@ -536,7 +532,6 @@ app.post('/api/deposit', async (req, res) => {
     res.json({ success: true, message: "Recharge request submitted successfully!" });
 });
 
-// Withdrawal Submission API
 app.post('/api/withdraw', async (req, res) => {
     const { userId, amount, address } = req.body;
     let amt = parseFloat(amount);
@@ -569,7 +564,7 @@ app.post('/api/withdraw', async (req, res) => {
         const inlineKeyboard = {
             inline_keyboard: [[
                 { text: "✅ Approve", callback_data: `approve_${reqId}` },
-                { text: "❌ Reject", callback_data: `reject_${reqId}` }
+                { text: "❌ Reject", callback_data: `reject_${reqId}`` }
             ]]
         };
         await sendTelegramMessage(ADMIN_ID, msgText, inlineKeyboard);
@@ -578,7 +573,6 @@ app.post('/api/withdraw', async (req, res) => {
     res.json({ success: true, message: "Withdrawal requested successfully!", newBalance: u.balance });
 });
 
-// VIP Plan Unlock API
 app.post('/api/unlock-vip', async (req, res) => {
     const { userId, level } = req.body;
     let u = await User.findOne({ id: userId });
@@ -606,13 +600,15 @@ app.post('/api/unlock-vip', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}`);
-    const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
-    if (RENDER_URL && BOT_TOKEN) {
+    
+    // Auto Webhook Setup for Render/Server
+    if (RENDER_APP_URL && BOT_TOKEN) {
         try {
-            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/setWebhook?url=${RENDER_URL}/api/webhook/${BOT_TOKEN}`);
-            console.log("Telegram Webhook Set Successfully!");
+            const webhookUrl = `${RENDER_APP_URL}/api/webhook/${BOT_TOKEN}`;
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/setWebhook?url=${webhookUrl}`);
+            console.log(`✅ Telegram Webhook successfully set to: ${webhookUrl}`);
         } catch (e) {
-            console.log("Failed to set webhook:", e);
+            console.log("❌ Failed to set Telegram webhook:", e);
         }
     }
 });
