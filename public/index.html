@@ -393,26 +393,61 @@ body {
     color: #fff; width: 100%; padding: 12px; border-radius: 12px; font-size: 14px; font-weight: 800; cursor: pointer;
 }
 
-/* ANNOUNCEMENT POPUP */
+/* ANNOUNCEMENT POPUP (Compact Size matching reference) */
 .announcement-overlay {
     position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px);
-    display: none; justify-content: center; align-items: center; z-index: 9999999; padding: 20px;
+    display: none; justify-content: center; align-items: center; z-index: 9999999; padding: 16px;
 }
 .announcement-overlay.active { display: flex; }
 .announcement-card {
-    background: #fff; width: 100%; max-width: 360px;
-    border-radius: 20px; padding: 20px; box-shadow: 0 25px 50px rgba(0,0,0,0.3);
-    text-align: left; color: #1e293b; max-height: 85vh; overflow-y: auto;
+    background: #fff; width: 100%; max-width: 320px;
+    border-radius: 16px; padding: 16px; box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+    text-align: left; color: #1e293b; max-height: 65vh; overflow: hidden;
+    display: flex; flex-direction: column;
 }
-.announcement-card h3 { font-size: 17px; font-weight: 800; color: #372652; margin-bottom: 10px; text-align: center; }
-.announcement-body { font-size: 11.5px; color: #64748b; line-height: 1.6; margin-bottom: 14px; }
+.announcement-card h3 { font-size: 15px; font-weight: 800; color: #372652; margin-bottom: 8px; text-align: center; }
+.announcement-body { font-size: 10.5px; color: #64748b; line-height: 1.5; overflow-y: auto; padding-right: 4px; margin-bottom: 12px; flex: 1; }
 .announcement-body b { color: #1e293b; }
 .announcement-plan-row {
-    background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;
-    padding: 6px 10px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center;
-    font-size: 11.5px; font-weight: 700; color: #1e293b;
+    background: #f8fafc; border: 1px solid var(--border); border-radius: 6px;
+    padding: 5px 8px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;
+    font-size: 10.5px; font-weight: 700; color: #1e293b;
 }
 .announcement-plan-row span { color: #16a34a; font-weight: 800; }
+
+/* RECHARGE NETWORK SELECTOR STYLING (Custom Dropdown with Logos) */
+.network-dropdown-container { position: relative; width: 100%; margin: 6px 0 14px 0; }
+.network-select-box {
+    width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border);
+    background: #f8fafc; font-weight: 700; font-size: 13px; color: #1e293b;
+    display: flex; justify-content: space-between; align-items: center; cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+}
+.network-options-dropdown {
+    position: absolute; top: calc(100% + 4px); left: 0; width: 100%; background: #372652;
+    border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.25); display: none; flex-direction: column;
+    z-index: 50; overflow: hidden; border: 1px solid rgba(255,255,255,0.15);
+}
+.network-options-dropdown.active { display: flex; }
+.network-option-item {
+    padding: 12px 14px; display: flex; justify-content: space-between; align-items: center;
+    color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.08);
+    transition: background 0.2s;
+}
+.network-option-item:hover { background: rgba(255,255,255,0.1); }
+.network-option-item:last-child { border-bottom: none; }
+.net-left { display: flex; align-items: center; gap: 10px; }
+.net-logo { width: 22px; height: 22px; border-radius: 50%; object-fit: contain; background: #fff; padding: 2px; }
+.net-radio {
+    width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.6);
+    display: flex; align-items: center; justify-content: center;
+}
+.network-option-item.selected .net-radio {
+    border-color: #3b82f6; background: #3b82f6;
+}
+.network-option-item.selected .net-radio::after {
+    content: ''; width: 6px; height: 6px; border-radius: 50%; background: #fff;
+}
 </style>  
 </head>  
 <body>  
@@ -481,7 +516,7 @@ body {
             Dear investors, are you ready for this wealth feast? We cordially invite you to join the UnitedPay investment platform and enjoy exclusive high-yield returns!<br><br>
             Earn returns on your investment on the same day. Membership is valid for 365 days, after which your principal will be fully refunded.<br><br>
             
-            <div style="margin-bottom: 10px;">
+            <div style="margin-bottom: 8px;">
                 <div class="announcement-plan-row">VIP-1: <span>Invest $0, Earn $1 Daily</span></div>
                 <div class="announcement-plan-row">VIP-2: <span>Invest $10, Earn $6 Daily</span></div>
                 <div class="announcement-plan-row">VIP-3: <span>Invest $30, Earn $20 Daily</span></div>
@@ -500,9 +535,9 @@ body {
             ✔️ Invite 5 people who have achieved effective A-level recharges and receive VIP4 status as a gift!<br>
             ✔️ Team three-tier recharge rebate: 11% - 2% - 1%
         </div>
-        <div style="display: flex; gap: 10px;">
-            <button class="ap-btn" style="flex: 1; background: #e2e8f0; color: #1e293b;" onclick="closeAnnouncement()">Close</button>
-            <button class="ap-btn" style="flex: 1;" onclick="closeAnnouncement()">Next</button>
+        <div style="display: flex; gap: 8px; padding-top: 4px; border-top: 1px solid var(--border);">
+            <button class="ap-btn" style="flex: 1; background: #e2e8f0; color: #1e293b; padding: 8px; font-size: 12px;" onclick="closeAnnouncement()">Close</button>
+            <button class="ap-btn" style="flex: 1; padding: 8px; font-size: 12px;" onclick="closeAnnouncement()">Next</button>
         </div>
     </div>
 </div>
@@ -845,11 +880,41 @@ body {
             <input type="number" id="recharge-usd-input" min="10" value="10" placeholder="10" style="width: 100%; padding: 12px; margin: 6px 0 14px 0; border-radius: 10px; border: 1px solid var(--border); background: #f8fafc; font-weight: 700;">
             
             <span style="font-size: 11px; font-weight: 800; color: #64748b;">Select Network</span>
-            <select id="recharge-network" style="width: 100%; padding: 12px; margin: 6px 0 14px 0; border-radius: 10px; border: 1px solid var(--border); background: #f8fafc; font-weight: 700; outline: none;">
-                <option value="usdt_bep20">USDT (BEP-20)</option>
-                <option value="usdt_trc20">USDT (TRC-20)</option>
-                <option value="bnb">BNB Smart Chain</option>
-            </select>
+            
+            <!-- Custom Select Dropdown with Logos -->
+            <div class="network-dropdown-container">
+                <div class="network-select-box" onclick="toggleNetworkDropdown()">
+                    <div class="net-left">
+                        <img src="https://cryptologos.cc/logos/tether-usdt-logo.svg" class="net-logo" id="selected-net-img" alt="USDT">
+                        <span id="selected-net-text">USDT (BEP-20)</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-down" style="font-size: 12px; color: #64748b;"></i>
+                </div>
+                <div class="network-options-dropdown" id="network-options-list">
+                    <div class="network-option-item selected" onclick="selectNetwork('usdt_bep20', 'USDT (BEP-20)', 'https://cryptologos.cc/logos/tether-usdt-logo.svg')">
+                        <div class="net-left">
+                            <img src="https://cryptologos.cc/logos/tether-usdt-logo.svg" class="net-logo" alt="USDT">
+                            <span>USDT (BEP-20)</span>
+                        </div>
+                        <div class="net-radio"></div>
+                    </div>
+                    <div class="network-option-item" onclick="selectNetwork('usdt_trc20', 'USDT (TRC-20)', 'https://cryptologos.cc/logos/tether-usdt-logo.svg')">
+                        <div class="net-left">
+                            <img src="https://cryptologos.cc/logos/tether-usdt-logo.svg" class="net-logo" alt="USDT">
+                            <span>USDT (TRC-20)</span>
+                        </div>
+                        <div class="net-radio"></div>
+                    </div>
+                    <div class="network-option-item" onclick="selectNetwork('bnb', 'BNB Smart Chain', 'https://cryptologos.cc/logos/bnb-bnb-logo.svg')">
+                        <div class="net-left">
+                            <img src="https://cryptologos.cc/logos/bnb-bnb-logo.svg" class="net-logo" alt="BNB">
+                            <span>BNB Smart Chain</span>
+                        </div>
+                        <div class="net-radio"></div>
+                    </div>
+                </div>
+            </div>
+            <input type="hidden" id="recharge-network-val" value="usdt_bep20">
 
             <span style="font-size: 11px; font-weight: 800; color: #64748b;">Company Deposit Address</span>
             <input type="text" id="company-deposit-addr" readonly value="0x2B4f0CEdA311d2d94e2c8b5A7fc390985Aac9Db9" style="font-size: 11px; text-align: center; color: #372652; font-weight: bold; background: #f8fafc; border: 1px solid var(--border); padding: 10px; border-radius: 10px; margin: 6px 0;">
@@ -969,7 +1034,7 @@ body {
     document.getElementById('profile-username').innerText = username;  
     document.getElementById('profile-id').innerText = `ID: ${userId}`;  
     document.getElementById('user-id-text').innerText = `ID: ${userId}`;  
-    let userRefLink = `https://t.me/UnitedPayBot?start=${userId}`;
+    let userRefLink = `https://t.me/UnitedPayTg_bot?start=${userId}`;
     document.getElementById('ref-link').value = userRefLink;  
 
     let userBalance = parseFloat(localStorage.getItem(`unitedpay_bal_${userId}`) || '0.00'); 
@@ -1032,6 +1097,31 @@ body {
     document.getElementById('withdraw-amount-input').addEventListener('input', function() {
         let val = parseFloat(this.value) || 0;
         document.getElementById('actually-received-amt').innerText = val.toFixed(2);
+    });
+
+    // Custom Network Dropdown Logic
+    function toggleNetworkDropdown() {
+        document.getElementById('network-options-list').classList.toggle('active');
+    }
+
+    function selectNetwork(val, name, imgSrc) {
+        document.getElementById('recharge-network-val').value = val;
+        document.getElementById('selected-net-text').innerText = name;
+        document.getElementById('selected-net-img').src = imgSrc;
+        document.getElementById('network-options-list').classList.remove('active');
+
+        // Update active class in list items
+        let items = document.querySelectorAll('.network-option-item');
+        items.forEach(el => el.classList.remove('selected'));
+        event.currentTarget.classList.add('selected');
+    }
+
+    // Close dropdown when clicking outside
+    window.addEventListener('click', function(e) {
+        if (!e.target.closest('.network-dropdown-container')) {
+            let list = document.getElementById('network-options-list');
+            if (list) list.classList.remove('active');
+        }
     });
 
     function startTaskCountdown() {
@@ -1396,13 +1486,11 @@ body {
         req.status = status;
         localStorage.setItem(`unitedpay_global_requests`, JSON.stringify(globalRequests));
 
-        // Update target user's local state
         let targetUserBal = parseFloat(localStorage.getItem(`unitedpay_bal_${req.userId}`) || '0.00');
         let targetUserRechargePool = parseFloat(localStorage.getItem(`unitedpay_recharge_pool_${req.userId}`) || '0.00');
         let targetUserTotalRecharge = parseFloat(localStorage.getItem(`unitedpay_recharge_${req.userId}`) || '0.00');
         let targetUserTx = JSON.parse(localStorage.getItem(`unitedpay_tx_${req.userId}`) || '[]');
 
-        // Find and update in user transaction history
         let userTxItem = targetUserTx.find(t => t.reqId === reqId);
         if(userTxItem) {
             userTxItem.status = status;
@@ -1414,12 +1502,9 @@ body {
                 targetUserTotalRecharge += req.amount;
                 localStorage.setItem(`unitedpay_recharge_pool_${req.userId}`, targetUserRechargePool.toFixed(2));
                 localStorage.setItem(`unitedpay_recharge_${req.userId}`, targetUserTotalRecharge.toFixed(2));
-            } else if(req.type === 'Withdrawal') {
-                // Funds already held/deducted
             }
         } else if(status === 'Rejected') {
             if(req.type === 'Withdrawal') {
-                // Refund balance if rejected
                 targetUserBal += req.amount;
                 localStorage.setItem(`unitedpay_bal_${req.userId}`, targetUserBal.toFixed(2));
             }
@@ -1438,10 +1523,10 @@ body {
         document.getElementById('announcement-modal').classList.add('active');
     }
     function openTelegramChannel() {
-        window.open('https://t.me/UnitedPayBot', '_blank');
+        window.open('https://t.me/UnitedPayTg_bot', '_blank');
     }
     function openSupportChat() {
-        window.open('https://t.me/UnitedPayBot', '_blank');
+        window.open('https://t.me/UnitedPayTg_bot', '_blank');
     }
     function openAppDownloadModal() {
         showActionPopup('success', 'UnitedPay App', 'Android APK & iOS mobile app is ready for download in our official channel.');
