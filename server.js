@@ -1373,6 +1373,26 @@ app.get('/api/price-check', async (req, res) => {
     res.json({ symbol: sym, price: r.price, sources: r.ok, failed: r.failed });
 });
 
+// Channel task: checks if the user really joined the channel (needs the bot to be an admin of that channel)
+const TASK_CHANNEL = process.env.TASK_CHANNEL || '@unitedPay115';
+app.get('/api/task/channel-status/:userId', async (req, res) => {
+    const uid = String(req.params.userId || '');
+    if (!validId(uid)) return res.status(400).json({ success: false, message: "Invalid user id" });
+    try {
+        const d = await tgCall('getChatMember', { chat_id: TASK_CHANNEL, user_id: Number(uid) });
+        if (d && d.ok && d.result) {
+            const st = d.result.status;
+            const joined = ['creator', 'administrator', 'member'].includes(st) || (st === 'restricted' && d.result.is_member === true);
+            return res.json({ success: true, verified: true, joined });
+        }
+        // bot cannot check (not an admin of the channel, wrong channel name, ...) -> app will trust the user
+        console.log('channel-status not verifiable:', d && d.description);
+        return res.json({ success: true, verified: false, joined: false });
+    } catch (e) {
+        return res.json({ success: true, verified: false, joined: false });
+    }
+});
+
 app.post('/api/update-ghs', async (req, res) => {
     const { userId } = req.body;
     let u = await User.findOne({ id: String(userId) });
