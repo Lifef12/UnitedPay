@@ -64,11 +64,13 @@ function requireTg(req, res, next) {
     next();
 }
 
-// ================== MINING RULES (LIVE TRX - no USD) ==================
+// ================== MINING RULES ==================
+// VALUE is in USD (1 GHS = $1 plan, earns $0.30 per day), but everything the user SEES and COLLECTS is TRX.
+// Mining speed in TRX = USD speed / live TRX price. Mined TRX is locked in TRX at the moment it is settled,
+// so later price moves never change what was already mined.
 const PLAN_DURATION_MS = 10 * 24 * 60 * 60 * 1000;
-const PAID_RATE_PER_GHS_TRX = 0.909;   // 1 GHS = 0.909 TRX per day (same speed as old $0.30)
-const FREE_DAILY_TRX = 0.0303;         // free mining TRX per day (same speed as old $0.01)
-const LEGACY_USD_TO_TRX = 0.33;        // only used to convert old accruedUsd values once
+const PAID_RATE_PER_GHS_USD = 0.30;    // $0.30 per GHS per day
+const FREE_DAILY_USD = 0.01;           // free mining: $0.01 per day
 
 // ================== MULTI-COIN LIVE PRICES ==================
 const STABLE = new Set(['USDT', 'USDC', 'BUSD', 'DAI', 'TUSD', 'FDUSD']);
@@ -219,43 +221,68 @@ function isPaidPlanActive(u, now = Date.now()) {
     return u.planActive !== false && Number(u.ghs) > 0 && !(u.planExpiryDate > 0 && now >= u.planExpiryDate);
 }
 
-// TRX per day for this user (live mining speed)
-function dailyTrxRate(u, now = Date.now()) {
-    return isPaidPlanActive(u, now) ? Number(u.ghs) * PAID_RATE_PER_GHS_TRX : FREE_DAILY_TRX;
+// last known TRX price without waiting (used only as a fallback)
+function trxPriceSync() {
+    const c = priceCache['TRX'];
+    return (c && c.price > 0) ? c.price : 0.33;
 }
 
-// TRX mined since lastClaimTime (not yet settled)
-function accrueTrx(u, now = Date.now()) {
+// USD value per day for this user (background value)
+function dailyUsdRate(u, now = Date.now()) {
+    return isPaidPlanActive(u, now) ? Number(u.ghs) * PAID_RATE_PER_GHS_USD : FREE_DAILY_USD;
+}
+
+// USD value mined since lastClaimTime that is not settled yet
+function accrueUsd(u, now = Date.now()) {
     const last = Number(u.lastClaimTime) || now;
     if (now <= last) return 0;
-    let trx = 0;
+    let usd = 0;
     let cursor = last;
     if (u.planActive !== false && Number(u.ghs) > 0) {
         const paidEnd = (u.planExpiryDate > 0) ? Math.min(now, u.planExpiryDate) : now;
         if (paidEnd > cursor) {
-            trx += ((paidEnd - cursor) / 1000) * (Number(u.ghs) * PAID_RATE_PER_GHS_TRX / 86400);
+            usd += ((paidEnd - cursor) / 1000) * (Number(u.ghs) * PAID_RATE_PER_GHS_USD / 86400);
             cursor = paidEnd;
         }
     }
     if (now > cursor) {
-        trx += ((now - cursor) / 1000) * (FREE_DAILY_TRX / 86400);
+        usd += ((now - cursor) / 1000) * (FREE_DAILY_USD / 86400);
     }
-    return trx;
+    return usd;
 }
 
-// moves the mined TRX into accruedTrx and resets the timer
-function settleAccrual(u, now = Date.now()) {
-    // one-time conversion of old USD accrual (from the previous version) into TRX
-    if (Number(u.accruedUsd) > 0) {
-        u.accruedTrx = Number(u.accruedTrx || 0) + Number(u.accruedUsd) / LEGACY_USD_TO_TRX;
-        u.accruedUsd = 0;
-    }
-    u.accruedTrx = Number(u.accruedTrx || 0) + accrueTrx(u, now);
+// TRX that this unsettled USD value turns into at the given TRX price
+function accrueTrx(u, now, price) {
+    price = price > 0 ? price : trxPriceSync();
+    return accrueUsd(u, now) / price;
+}
+
+// TRX total that is waiting to be collected (already locked TRX + old USD leftovers + new mining) at this price
+function pendingTrxAt(u, now, price) {
+    price = price > 0 ? price : trxPriceSync();
+    return Number(u.accruedTrx || 0) + Number(u.accruedUsd || 0) / price + accrueTrx(u, now, price);
+}
+
+// locks everything mined so far into accruedTrx (at the given price) and restarts the timer
+function settleAccrual(u, now = Date.now(), price = 0) {
+    u.accruedTrx = pendingTrxAt(u, now, price);
+    u.accruedUsd = 0;
     u.lastClaimTime = now;
 }
 
-function expireUserPlan(u, now = Date.now()) {
-    settleAccrual(u, now);
+// same thing but safe against two requests at the same time (used by the app's refresh)
+async function settleAtomic(u, now, price) {
+    const trx = pendingTrxAt(u, now, price);
+    const done = await User.findOneAndUpdate(
+        { id: u.id, lastClaimTime: u.lastClaimTime },
+        { $set: { accruedTrx: trx, accruedUsd: 0, lastClaimTime: now } },
+        { new: true }
+    );
+    return done || await User.findOne({ id: u.id });
+}
+
+function expireUserPlan(u, now = Date.now(), price = 0) {
+    settleAccrual(u, now, price);
     u.ghs = 0;
     u.planActive = false;
     u.planExpiryDate = 0;
@@ -283,6 +310,7 @@ mongoose.connect(MONGO_URI)
 
         try {
             const currentTime = Date.now();
+            const startPrice = await getTrxPrice();
             const allUsers = await mongoose.model('User').find({});
             for (let u of allUsers) {
                 if (u.planActive && u.ghs > 0 && (!u.planStartDate || u.planStartDate === 0)) {
@@ -300,7 +328,7 @@ mongoose.connect(MONGO_URI)
                 }
 
                 if (u.planActive && u.planExpiryDate && u.planExpiryDate > 0 && currentTime >= u.planExpiryDate) {
-                    expireUserPlan(u, currentTime);
+                    expireUserPlan(u, currentTime, startPrice);
                     await u.save();
                 }
             }
@@ -317,7 +345,7 @@ const userSchema = new mongoose.Schema({
     balance: { type: Number, default: 0 },
     ghs: { type: Number, default: 0 },
     lastClaimTime: { type: Number, default: Date.now },
-    accruedTrx: { type: Number, default: 0 },      // NEW: mined TRX not yet claimed
+    accruedTrx: { type: Number, default: 0 },      // mined TRX (locked at settle time) not yet claimed
     accruedUsd: { type: Number, default: 0 },      // old field, only kept so old data converts to TRX
     deposits: { type: Array, default: [] },
     withdrawals: { type: Array, default: [] },
@@ -541,8 +569,9 @@ setInterval(async () => {
             planExpiryDate: { $gt: 0, $lte: currentTime }
         });
 
+        const jobPrice = expiredUsers.length ? await getTrxPrice() : 0;
         for (let u of expiredUsers) {
-            expireUserPlan(u, currentTime);
+            expireUserPlan(u, currentTime, jobPrice);
             await u.save();
 
             sendTelegramMessage(
@@ -667,7 +696,7 @@ async function approveRequest(reqDoc, u, reqId) {
         u.markModified('deposits');
 
         const now = Date.now();
-        settleAccrual(u, now);
+        settleAccrual(u, now, await getTrxPrice());
 
         const hadPaidPlan = isPaidPlanActive(u, now);
         u.ghs = hadPaidPlan ? Number(u.ghs) + depAmount : depAmount;
@@ -1295,7 +1324,7 @@ app.post('/admin/manage-plan', checkAdminAuth, async (req, res) => {
     if (!u) return res.status(404).json({ success: false, message: "User not found!" });
 
     const now = Date.now();
-    settleAccrual(u, now);
+    settleAccrual(u, now, await getTrxPrice());
 
     if (action === 'activate') {
         u.planActive = true;
@@ -1436,7 +1465,7 @@ app.get('/api/user/:userId', requireTg, async (req, res) => {
         user = new User({ id: userId, username: req.tgName });
         await user.save();
     } else if (user.planActive && user.planExpiryDate && user.planExpiryDate > 0 && now >= user.planExpiryDate) {
-        expireUserPlan(user, now);
+        expireUserPlan(user, now, await getTrxPrice());
         await user.save();
     }
 
@@ -1448,6 +1477,8 @@ app.get('/api/user/:userId', requireTg, async (req, res) => {
     }
 
     const price = await getTrxPrice();
+    // lock what was mined so far into TRX at the current price, so the number the user sees is exactly what he can claim
+    user = await settleAtomic(user, now, price);
     const data = user.toObject();
 
     ['level1', 'level2', 'level3'].forEach(lvl => {
@@ -1478,12 +1509,13 @@ app.get('/api/user/:userId', requireTg, async (req, res) => {
 
     data.team = await getTeamStats(user);
 
-    // ===== LIVE TRX MINING (no USD) =====
-    // pendingTrx = TRX mined but not yet collected (app counter starts from this number)
-    // dailyTrx   = TRX per day -> per second = dailyTrx / 86400
-    const legacyTrx = Number(user.accruedUsd || 0) / LEGACY_USD_TO_TRX;   // old USD leftovers, if any
-    data.pendingTrx = Number(user.accruedTrx || 0) + legacyTrx + accrueTrx(user, now);
-    data.dailyTrx = dailyTrxRate(user, now);
+    // ===== LIVE TRX MINING (value in USD in background, shown in TRX) =====
+    // pendingTrx   = TRX mined and ready to claim right now (the app counter starts from this number)
+    // trxPerSecond = live mining speed in TRX per second (USD speed / live TRX price)
+    // The app should call this endpoint every ~30-60 sec so the speed follows the live TRX price.
+    data.pendingTrx = Number(user.accruedTrx || 0);
+    data.dailyUsd = dailyUsdRate(user, now);
+    data.dailyTrx = data.dailyUsd / price;
     data.trxPerSecond = data.dailyTrx / 86400;
     data.paidPlan = isPaidPlanActive(user, now);
     data.trxPrice = price;
@@ -1544,15 +1576,15 @@ app.post('/api/update-ghs', requireTg, async (req, res) => {
     res.json({ success: true, ghs: u ? u.ghs : 0 });
 });
 
-// ================== CLAIM (live TRX, no USD conversion) ==================
+// ================== CLAIM (mined TRX is added to the TRX balance) ==================
 app.post('/api/claim', requireTg, async (req, res) => {
     const userId = req.tgId;
     const u = await User.findOne({ id: userId });
     if (!u || u.isBanned) return res.status(400).json({ success: false, message: "User not found or banned" });
 
     const now = Date.now();
-    const legacyTrx = Number(u.accruedUsd || 0) / LEGACY_USD_TO_TRX;     // old USD leftovers (if any)
-    const trxAmount = Number(u.accruedTrx || 0) + legacyTrx + accrueTrx(u, now);
+    const price = await getTrxPrice();
+    const trxAmount = pendingTrxAt(u, now, price);   // locked TRX + whatever was mined since the last refresh
     if (!(trxAmount > 0)) return res.status(400).json({ success: false, message: "Nothing to collect yet" });
 
     const updated = await User.findOneAndUpdate(
@@ -1566,7 +1598,8 @@ app.post('/api/claim', requireTg, async (req, res) => {
         success: true,
         balance: updated.balance,
         lastClaimTime: updated.lastClaimTime,
-        claimedTrx: trxAmount
+        claimedTrx: trxAmount,
+        trxPrice: price
     });
 });
 
