@@ -53,6 +53,17 @@ function esc(s) {
 }
 function validId(id) { return /^\d{1,20}$/.test(String(id || '')); }
 
+// ================== SIMPLE USER ID (no Telegram signature check) ==================
+// userId comes from the app (body / url). Website security is handled only in the frontend (Access Denied screen).
+function requireTg(req, res, next) {
+    const uid = String((req.body && req.body.userId) || (req.params && req.params.userId) || (req.query && req.query.userId) || '');
+    if (!validId(uid)) return res.status(400).json({ success: false, message: 'Invalid user id' });
+    req.tgId = uid;
+    const nm = req.body && req.body.username;
+    req.tgName = nm && String(nm).length < 80 ? String(nm) : 'User';
+    next();
+}
+
 // ================== MINING RULES ==================
 const PLAN_DURATION_MS = 10 * 24 * 60 * 60 * 1000;
 const PAID_RATE_PER_GHS_USD = 0.30;
@@ -353,9 +364,10 @@ app.use((req, res, next) => {
     next();
 });
 
+// the Mini App is hosted on another domain (Vercel), so CORS must allow it and its login header
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, X-Tg-Init-Data');
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     if (req.method === 'OPTIONS') return res.sendStatus(204);
     next();
@@ -791,6 +803,7 @@ async function registerReferral(user) {
 }
 
 // ================== TELEGRAM WEBHOOK ==================
+
 async function handleWebhookLogic(req, res) {
     const update = req.body || {};
     res.sendStatus(200);
@@ -1399,9 +1412,8 @@ async function getTeamStats(user) {
     return out;
 }
 
-app.get('/api/user/:userId', async (req, res) => {
-    const userId = String(req.params.userId);
-    if (!validId(userId)) return res.status(400).json({ success: false, message: "Invalid user id" });
+app.get('/api/user/:userId', requireTg, async (req, res) => {
+    const userId = req.tgId;
     let user = await User.findOne({ id: userId });
 
     if (user && user.isBanned) {
@@ -1411,7 +1423,7 @@ app.get('/api/user/:userId', async (req, res) => {
     const now = Date.now();
 
     if (!user) {
-        user = new User({ id: userId, username: 'User' });
+        user = new User({ id: userId, username: req.tgName });
         await user.save();
     } else if (user.planActive && user.planExpiryDate && user.planExpiryDate > 0 && now >= user.planExpiryDate) {
         expireUserPlan(user, now);
@@ -1462,7 +1474,7 @@ app.get('/api/user/:userId', async (req, res) => {
     res.json(data);
 });
 
-// ===== LIVE QUOTE: same source the server uses for requests =====
+// ===== LIVE QUOTE: same source the server uses for requests (public, no login needed) =====
 // Deposit:  GET /api/quote?coin=LTC (Litecoin)&usdt=1      -> exact LTC to pay
 // Withdraw: GET /api/quote?coin=LTC (Litecoin)&trx=10      -> exact LTC you will receive
 app.get('/api/quote', async (req, res) => {
@@ -1493,11 +1505,9 @@ app.get('/api/price-check', async (req, res) => {
 
 // Channel task: checks if the user really joined the channel (needs the bot to be an admin of that channel)
 const TASK_CHANNEL = process.env.TASK_CHANNEL || '@unitedPay115';
-app.get('/api/task/channel-status/:userId', async (req, res) => {
-    const uid = String(req.params.userId || '');
-    if (!validId(uid)) return res.status(400).json({ success: false, message: "Invalid user id" });
+app.get('/api/task/channel-status/:userId', requireTg, async (req, res) => {
     try {
-        const d = await tgCall('getChatMember', { chat_id: TASK_CHANNEL, user_id: Number(uid) });
+        const d = await tgCall('getChatMember', { chat_id: TASK_CHANNEL, user_id: Number(req.tgId) });
         if (d && d.ok && d.result) {
             const st = d.result.status;
             const joined = ['creator', 'administrator', 'member'].includes(st) || (st === 'restricted' && d.result.is_member === true);
@@ -1511,15 +1521,14 @@ app.get('/api/task/channel-status/:userId', async (req, res) => {
     }
 });
 
-app.post('/api/update-ghs', async (req, res) => {
-    const { userId } = req.body;
-    let u = await User.findOne({ id: String(userId) });
+app.post('/api/update-ghs', requireTg, async (req, res) => {
+    let u = await User.findOne({ id: req.tgId });
     if (u && u.isBanned) return res.status(403).json({ success: false, isBanned: true, message: "Your account is banned." });
     res.json({ success: true, ghs: u ? u.ghs : 0 });
 });
 
-app.post('/api/claim', async (req, res) => {
-    const userId = String(req.body.userId || '');
+app.post('/api/claim', requireTg, async (req, res) => {
+    const userId = req.tgId;
     const u = await User.findOne({ id: userId });
     if (!u || u.isBanned) return res.status(400).json({ success: false, message: "User not found or banned" });
 
@@ -1548,14 +1557,15 @@ app.post('/api/claim', async (req, res) => {
 });
 
 // ================== DEPOSIT (coin-wise exact live amount) ==================
-app.post('/api/deposit', async (req, res) => {
-    const { userId, username, amount, usdtAmount, coin, txHash } = req.body;
-    if (!userId || !txHash || !validId(userId)) {
+app.post('/api/deposit', requireTg, async (req, res) => {
+    const userId = req.tgId;
+    const { amount, usdtAmount, coin, txHash } = req.body;
+    if (!txHash) {
         return res.status(400).json({ success: false, message: "Invalid deposit data." });
     }
 
     const cleanTxHash = String(txHash).trim();
-    if (cleanTxHash.length < 6) {
+    if (cleanTxHash.length < 6 || cleanTxHash.length > 200) {
         return res.status(400).json({ success: false, message: "Invalid TxHash." });
     }
 
@@ -1577,15 +1587,18 @@ app.post('/api/deposit', async (req, res) => {
 
     let u = await User.findOne({ id: userId });
     if (u && u.isBanned) return res.status(403).json({ success: false, isBanned: true, message: "Your account is banned." });
-    if (!u) u = new User({ id: userId, username: username || 'User' });
+    if (!u) u = new User({ id: userId, username: req.tgName });
 
-    if (username && username !== 'User') {
-        u.username = username;
+    if (req.tgName && req.tgName !== 'User') {
+        u.username = req.tgName;
     }
 
-    const coinRaw = String(coin || 'TRX (TRC-20)');
+    const coinRaw = String(coin || 'TRX (TRC-20)').slice(0, 60);
     const sym = parseCoinSymbol(coinRaw);
-    const exactUsdtVal = Number(usdtAmount) > 0 ? Number(usdtAmount) : 1;
+    let exactUsdtVal = Number(usdtAmount) > 0 ? Number(usdtAmount) : 1;
+    if (exactUsdtVal < 1 || exactUsdtVal > 10000) {
+        return res.status(400).json({ success: false, message: "Deposit amount must be between 1 and 10000." });
+    }
 
     const price = await getCoinPriceUsd(sym);
     if (!(price > 0)) {
@@ -1594,7 +1607,7 @@ app.post('/api/deposit', async (req, res) => {
 
     // exact amount of the chosen coin for this USDT value
     const liveAmount = roundCoin(exactUsdtVal / price, sym);
-    // if the app already showed the user an amount (within 10% of live), keep that exact number; otherwise use live
+    // if the app already showed the user an amount (within 15% of live), keep that exact number; otherwise use live
     const clientAmount = parseFloat(String(amount || '').replace(/,/g, ''));
     const coinAmount = (clientAmount > 0 && Math.abs(clientAmount - liveAmount) / liveAmount <= 0.15)
         ? roundCoin(clientAmount, sym)
@@ -1639,15 +1652,16 @@ app.post('/api/deposit', async (req, res) => {
 });
 
 // ================== WITHDRAW (coin-wise exact live amount) ==================
-// Body: { userId, username, address, coin: "LTC (Litecoin)", trxAmount (TRX to deduct)  OR  amount (in chosen coin) }
-app.post('/api/withdraw', async (req, res) => {
-    const { userId, username, amount, address, trxAmount, coin } = req.body;
-    if (!userId || !validId(userId) || !address || String(address).trim().length < 10) {
+// Body: { address, coin: "LTC (Litecoin)", trxAmount (TRX to deduct)  OR  amount (in chosen coin) }
+app.post('/api/withdraw', requireTg, async (req, res) => {
+    const userId = req.tgId;
+    const { amount, address, trxAmount, coin } = req.body;
+    if (!address || String(address).trim().length < 10 || String(address).trim().length > 120) {
         return res.status(400).json({ success: false, message: "Invalid withdrawal data" });
     }
     const cleanAddress = String(address).trim();
 
-    const coinRaw = String(coin || 'TRX (TRC-20)');
+    const coinRaw = String(coin || 'TRX (TRC-20)').slice(0, 60);
     const sym = parseCoinSymbol(coinRaw);
 
     const trxPrice = await getTrxPrice();
@@ -1703,7 +1717,7 @@ app.post('/api/withdraw', async (req, res) => {
 
     // atomic: deduct balance only if enough balance, and add history in the same step
     const setFields = {};
-    if (username && username !== 'User') setFields.username = username;
+    if (req.tgName && req.tgName !== 'User') setFields.username = req.tgName;
     const updateDoc = {
         $inc: { balance: -trxAmt },
         $push: { withdrawals: { $each: [entry], $position: 0 } }
