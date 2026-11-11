@@ -64,10 +64,11 @@ function requireTg(req, res, next) {
     next();
 }
 
-// ================== MINING RULES ==================
+// ================== MINING RULES (LIVE TRX - no USD) ==================
 const PLAN_DURATION_MS = 10 * 24 * 60 * 60 * 1000;
-const PAID_RATE_PER_GHS_USD = 0.30;
-const FREE_DAILY_USD = 0.01;
+const PAID_RATE_PER_GHS_TRX = 0.909;   // 1 GHS = 0.909 TRX per day (same speed as old $0.30)
+const FREE_DAILY_TRX = 0.0303;         // free mining TRX per day (same speed as old $0.01)
+const LEGACY_USD_TO_TRX = 0.33;        // only used to convert old accruedUsd values once
 
 // ================== MULTI-COIN LIVE PRICES ==================
 const STABLE = new Set(['USDT', 'USDC', 'BUSD', 'DAI', 'TUSD', 'FDUSD']);
@@ -218,30 +219,38 @@ function isPaidPlanActive(u, now = Date.now()) {
     return u.planActive !== false && Number(u.ghs) > 0 && !(u.planExpiryDate > 0 && now >= u.planExpiryDate);
 }
 
-function dailyUsdRate(u, now = Date.now()) {
-    return isPaidPlanActive(u, now) ? Number(u.ghs) * PAID_RATE_PER_GHS_USD : FREE_DAILY_USD;
+// TRX per day for this user (live mining speed)
+function dailyTrxRate(u, now = Date.now()) {
+    return isPaidPlanActive(u, now) ? Number(u.ghs) * PAID_RATE_PER_GHS_TRX : FREE_DAILY_TRX;
 }
 
-function accrueUsd(u, now = Date.now()) {
+// TRX mined since lastClaimTime (not yet settled)
+function accrueTrx(u, now = Date.now()) {
     const last = Number(u.lastClaimTime) || now;
     if (now <= last) return 0;
-    let usd = 0;
+    let trx = 0;
     let cursor = last;
     if (u.planActive !== false && Number(u.ghs) > 0) {
         const paidEnd = (u.planExpiryDate > 0) ? Math.min(now, u.planExpiryDate) : now;
         if (paidEnd > cursor) {
-            usd += ((paidEnd - cursor) / 1000) * (Number(u.ghs) * PAID_RATE_PER_GHS_USD / 86400);
+            trx += ((paidEnd - cursor) / 1000) * (Number(u.ghs) * PAID_RATE_PER_GHS_TRX / 86400);
             cursor = paidEnd;
         }
     }
     if (now > cursor) {
-        usd += ((now - cursor) / 1000) * (FREE_DAILY_USD / 86400);
+        trx += ((now - cursor) / 1000) * (FREE_DAILY_TRX / 86400);
     }
-    return usd;
+    return trx;
 }
 
+// moves the mined TRX into accruedTrx and resets the timer
 function settleAccrual(u, now = Date.now()) {
-    u.accruedUsd = Number(u.accruedUsd || 0) + accrueUsd(u, now);
+    // one-time conversion of old USD accrual (from the previous version) into TRX
+    if (Number(u.accruedUsd) > 0) {
+        u.accruedTrx = Number(u.accruedTrx || 0) + Number(u.accruedUsd) / LEGACY_USD_TO_TRX;
+        u.accruedUsd = 0;
+    }
+    u.accruedTrx = Number(u.accruedTrx || 0) + accrueTrx(u, now);
     u.lastClaimTime = now;
 }
 
@@ -308,7 +317,8 @@ const userSchema = new mongoose.Schema({
     balance: { type: Number, default: 0 },
     ghs: { type: Number, default: 0 },
     lastClaimTime: { type: Number, default: Date.now },
-    accruedUsd: { type: Number, default: 0 },
+    accruedTrx: { type: Number, default: 0 },      // NEW: mined TRX not yet claimed
+    accruedUsd: { type: Number, default: 0 },      // old field, only kept so old data converts to TRX
     deposits: { type: Array, default: [] },
     withdrawals: { type: Array, default: [] },
     isBanned: { type: Boolean, default: false },
@@ -1467,10 +1477,17 @@ app.get('/api/user/:userId', requireTg, async (req, res) => {
     }));
 
     data.team = await getTeamStats(user);
-    data.pendingUsd = Number(user.accruedUsd || 0) + accrueUsd(user, now);
-    data.dailyUsd = dailyUsdRate(user, now);
+
+    // ===== LIVE TRX MINING (no USD) =====
+    // pendingTrx = TRX mined but not yet collected (app counter starts from this number)
+    // dailyTrx   = TRX per day -> per second = dailyTrx / 86400
+    const legacyTrx = Number(user.accruedUsd || 0) / LEGACY_USD_TO_TRX;   // old USD leftovers, if any
+    data.pendingTrx = Number(user.accruedTrx || 0) + legacyTrx + accrueTrx(user, now);
+    data.dailyTrx = dailyTrxRate(user, now);
+    data.trxPerSecond = data.dailyTrx / 86400;
     data.paidPlan = isPaidPlanActive(user, now);
     data.trxPrice = price;
+    data.serverTime = now;
     res.json(data);
 });
 
@@ -1527,21 +1544,20 @@ app.post('/api/update-ghs', requireTg, async (req, res) => {
     res.json({ success: true, ghs: u ? u.ghs : 0 });
 });
 
+// ================== CLAIM (live TRX, no USD conversion) ==================
 app.post('/api/claim', requireTg, async (req, res) => {
     const userId = req.tgId;
     const u = await User.findOne({ id: userId });
     if (!u || u.isBanned) return res.status(400).json({ success: false, message: "User not found or banned" });
 
     const now = Date.now();
-    const totalUsd = Number(u.accruedUsd || 0) + accrueUsd(user, now);
-    if (!(totalUsd > 0)) return res.status(400).json({ success: false, message: "Nothing to collect yet" });
-
-    const price = await getTrxPrice();
-    const trxAmount = totalUsd / price;
+    const legacyTrx = Number(u.accruedUsd || 0) / LEGACY_USD_TO_TRX;     // old USD leftovers (if any)
+    const trxAmount = Number(u.accruedTrx || 0) + legacyTrx + accrueTrx(u, now);
+    if (!(trxAmount > 0)) return res.status(400).json({ success: false, message: "Nothing to collect yet" });
 
     const updated = await User.findOneAndUpdate(
         { id: userId, lastClaimTime: u.lastClaimTime },
-        { $inc: { balance: trxAmount }, $set: { accruedUsd: 0, lastClaimTime: now } },
+        { $inc: { balance: trxAmount }, $set: { accruedTrx: 0, accruedUsd: 0, lastClaimTime: now } },
         { new: true }
     );
     if (!updated) return res.status(409).json({ success: false, message: "Please try again." });
@@ -1550,9 +1566,7 @@ app.post('/api/claim', requireTg, async (req, res) => {
         success: true,
         balance: updated.balance,
         lastClaimTime: updated.lastClaimTime,
-        claimedTrx: trxAmount,
-        claimedUsd: totalUsd,
-        trxPrice: price
+        claimedTrx: trxAmount
     });
 });
 
