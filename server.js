@@ -1,6 +1,31 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 const app = express();
+app.set('trust proxy', 1);
+
+// async route errors must never leave a page hanging (Express 4 does not catch them by itself)
+['get', 'post'].forEach(function (m) {
+    const orig = app[m].bind(app);
+    app[m] = function (path) {
+        const handlers = Array.prototype.slice.call(arguments, 1);
+        if (!handlers.length) return orig(path);          // app.get('setting')
+        return orig.apply(null, [path].concat(handlers.map(function (h) {
+            if (typeof h !== 'function' || h.constructor.name !== 'AsyncFunction') return h;
+            return function (req, res, next) {
+                return h(req, res, next).catch(function (err) {
+                    console.log('Route error', req.method, req.path, err);
+                    if (res.headersSent) return;
+                    if (req.path.indexOf('/api/') === 0 || req.method !== 'GET') {
+                        res.status(500).json({ success: false, message: 'Server error. Please try again.' });
+                    } else {
+                        res.status(500).send('Server error. Please refresh in a few seconds.');
+                    }
+                });
+            };
+        })));
+    };
+});
 
 // ================== SETTINGS ==================
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -37,7 +62,7 @@ const FREE_DAILY_USD = 0.01;
 const STABLE = new Set(['USDT', 'USDC', 'BUSD', 'DAI', 'TUSD', 'FDUSD']);
 const COIN_ALIASES = {
     TRON: 'TRX', LITECOIN: 'LTC', BITCOIN: 'BTC', ETHEREUM: 'ETH', DOGECOIN: 'DOGE',
-    SOLANA: 'SOL', RIPPLE: 'XRP', TETHER: 'USDT', BINANCE: 'BNB', TONCOIN: 'TON',
+    SOLANA: 'SOL', RIPPLE: 'XRP', TETHER: 'USDT', BINANCE: 'BNB', TONCOIN: 'TON', GRAM: 'TON',
     CARDANO: 'ADA', POLKADOT: 'DOT', AVALANCHE: 'AVAX', CHAINLINK: 'LINK', STELLAR: 'XLM'
 };
 const NETWORK_TOKENS = new Set(['BEP', 'TRC', 'ERC', 'BSC', 'POLYGON']);
@@ -67,7 +92,7 @@ function parseCoinSymbol(coin) {
 
 function coinDecimals(sym) {
     if (STABLE.has(sym)) return 2;
-    if (sym === 'BTC' || sym === 'ETH' || sym === 'BCH') return 8;
+    if (sym === 'BTC' || sym === 'ETH' || sym === 'BCH' || sym === 'BNB') return 8;
     return 6;
 }
 function roundCoin(n, sym) { return Number(Number(n).toFixed(coinDecimals(sym))); }
@@ -336,13 +361,28 @@ app.use((req, res, next) => {
     next();
 });
 
-const activeSessions = new Set();
+// Signed cookie sessions: still valid after the server sleeps/restarts (Render free plan restarts often)
+const SESSION_SECRET = process.env.SESSION_SECRET || (String(BOT_TOKEN || '') + String(ADMIN_PASSWORD || '') + 'tr-session');
+function signSession(exp) { return crypto.createHmac('sha256', SESSION_SECRET).update(String(exp)).digest('hex'); }
+function makeSession() { const exp = Date.now() + 24 * 60 * 60 * 1000; return exp + '.' + signSession(exp); }
+function validSession(token) {
+    try {
+        if (!token) return false;
+        const parts = String(token).split('.');
+        if (parts.length !== 2) return false;
+        const exp = Number(parts[0]);
+        if (!(exp > Date.now())) return false;
+        const a = Buffer.from(parts[1]);
+        const b = Buffer.from(signSession(exp));
+        return a.length === b.length && crypto.timingSafeEqual(a, b);
+    } catch (e) { return false; }
+}
+
+const loginFails = {};
+function loginBlocked(ip) { const f = loginFails[ip]; return !!(f && f.count >= 8 && Date.now() - f.last < 10 * 60 * 1000); }
 
 function checkAdminAuth(req, res, next) {
-    const sessionToken = req.cookies.admin_session;
-    if (sessionToken && activeSessions.has(sessionToken)) {
-        return next();
-    }
+    if (validSession(req.cookies.admin_session)) return next();
     if (req.method !== 'GET') return res.status(401).json({ success: false, message: "Session expired. Please login again." });
     return res.redirect('/admin/login');
 }
@@ -544,11 +584,14 @@ async function payReferralCommissions(depositUser, usdtAmount) {
     let current = depositUser;
     const trxPrice = await getTrxPrice();
     const depositingUserId = depositUser.id;
+    const seenUsers = new Set([depositingUserId]);
 
     for (let lvl = 1; lvl <= 3; lvl++) {
         if (!current.referredBy) break;
         const refUser = await User.findOne({ id: current.referredBy });
         if (!refUser) break;
+        if (seenUsers.has(refUser.id)) break;      // never pay a loop
+        seenUsers.add(refUser.id);
 
         const commUsdt = usdtAmount * rates[lvl - 1];
         const commTrx = commUsdt / trxPrice;
@@ -692,6 +735,32 @@ async function processRequest(reqId, action, tgMsgId = null) {
 }
 
 // ================== REFERRAL REGISTER (3 LEVELS) ==================
+// The referrer must exist and must not be somebody in this user's own downline (no loops)
+async function referrerIsValid(userId, referrerId) {
+    userId = String(userId); referrerId = String(referrerId || '');
+    if (!referrerId || referrerId === userId) return false;
+    const ref = await User.findOne({ id: referrerId }, 'id referredBy');
+    if (!ref) return false;
+    let cur = ref.referredBy, hops = 0;
+    while (cur && hops < 10) {
+        if (String(cur) === userId) return false;
+        const up = await User.findOne({ id: String(cur) }, 'referredBy');
+        if (!up) break;
+        cur = up.referredBy;
+        hops++;
+    }
+    return true;
+}
+
+// A referrer can only be attached to a fresh account: no referrer yet, no deposits, no team of its own
+function canAttachReferrer(user) {
+    if (user.referredBy) return false;
+    if (user.deposits && user.deposits.length) return false;
+    const r = user.referrals || {};
+    if ((r.level1 && r.level1.length) || (r.level2 && r.level2.length) || (r.level3 && r.level3.length)) return false;
+    return true;
+}
+
 async function registerReferral(user) {
     try {
         if (!user || !user.referredBy) return;
@@ -709,10 +778,10 @@ async function registerReferral(user) {
 
             const exists = refUser.referrals[key].some(r => (typeof r === 'string' ? r === chatId : r.id === chatId));
             if (!exists) {
-                refUser.referrals[key].push({ id: chatId, joinedDate: 'Active', bonusEarned: 0 });
+                refUser.referrals[key].push({ id: chatId, joinedDate: 'Active', joinedAt: Date.now(), bonusEarned: 0 });
                 refUser.markModified(`referrals.${key}`);
                 await refUser.save();
-                sendTelegramMessage(refUser.id, `🎁 <b>New Level ${lvl} Referral Joined!</b>\nUser ID: <code>${esc(chatId)}</code>`);
+                sendTelegramMessage(refUser.id, `🎁 <b>New Level ${lvl} Referral Joined!</b>\n${esc(user.username || 'User')} · ID: <code>${esc(chatId)}</code>`);
             }
             currentRefId = refUser.referredBy ? String(refUser.referredBy) : null;
         }
@@ -746,10 +815,11 @@ async function handleWebhookLogic(req, res) {
                 }
 
                 if (!user) {
+                    const okRef = (referrerId && await referrerIsValid(chatId, referrerId)) ? referrerId : null;
                     user = new User({
                         id: chatId,
                         username: msg.from.username ? `@${msg.from.username}` : (msg.from.first_name || 'User'),
-                        referredBy: (referrerId && referrerId !== chatId) ? referrerId : null
+                        referredBy: okRef
                     });
                     await user.save();
                 } else {
@@ -758,7 +828,7 @@ async function handleWebhookLogic(req, res) {
                         user.username = currentUsername;
                         await user.save();
                     }
-                    if (!user.referredBy && referrerId && referrerId !== chatId) {
+                    if (referrerId && canAttachReferrer(user) && await referrerIsValid(chatId, referrerId)) {
                         user.referredBy = referrerId;
                         await user.save();
                     }
@@ -789,11 +859,18 @@ async function handleWebhookLogic(req, res) {
 
                 await sendTelegramPhoto(chatId, startPhotoUrl, welcomeCaption, webAppMarkup);
 
-            } else if (text === '/admin' && chatId === ADMIN_ID) {
-                const renderAppUrl = process.env.RENDER_EXTERNAL_URL || "https://dashboard.render.com";
-                await sendTelegramMessage(chatId, `👑 <b>TRON RICH Admin Access</b>\n\nClick below to open Login Page:`, {
-                    inline_keyboard: [[{ text: "🔐 Admin Login Panel", url: `${renderAppUrl}/admin/login` }]]
-                });
+            } else if (/^\/admin(@\w+)?$/i.test(text.trim())) {
+                const fromId = String((msg.from && msg.from.id) || chatId);
+                if (fromId === ADMIN_ID) {
+                    const baseUrl = String(process.env.RENDER_EXTERNAL_URL || 'https://unitedpay.onrender.com').replace(/\/+$/, '');
+                    await sendTelegramMessage(chatId, `👑 <b>TRON RICH Admin Access</b>\n\nClick below to open the login page:`, {
+                        inline_keyboard: [[{ text: "🔐 Admin Login Panel", url: `${baseUrl}/admin/login` }]]
+                    });
+                } else {
+                    await sendTelegramMessage(chatId, `⛔ <b>Admin only.</b>\nYour Telegram ID: <code>${esc(fromId)}</code>`);
+                }
+            } else if (/^\/myid(@\w+)?$/i.test(text.trim())) {
+                await sendTelegramMessage(chatId, `🆔 Your Telegram ID: <code>${esc((msg.from && msg.from.id) || chatId)}</code>`);
             }
         } else if (update.callback_query) {
             const query = update.callback_query;
@@ -821,6 +898,8 @@ async function handleWebhookLogic(req, res) {
 app.post(`/api/webhook/${BOT_TOKEN}`, handleWebhookLogic);
 app.post('/webhook', handleWebhookLogic);
 app.post('/api/webhook/*', handleWebhookLogic);
+
+app.get('/health', (req, res) => { res.type('text').send('ok'); });
 
 app.get('/', (req, res) => {
     res.send(`<h1>TRON RICH Mining Backend Active</h1><p>Please launch via Telegram Bot (@TronRichMiningTg_Bot).</p>`);
@@ -859,19 +938,22 @@ app.get('/admin/login', (req, res) => {
 
 app.post('/admin/login', (req, res) => {
     const { username, password } = req.body;
+    const ip = req.ip || 'unknown';
+    if (loginBlocked(ip)) {
+        return res.send(`<script>alert('Too many wrong attempts. Try again in 10 minutes.'); window.location.href='/admin/login';</script>`);
+    }
     if (ADMIN_PASSWORD && username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-        const sessionToken = "token_" + Math.random().toString(36).substring(2) + Date.now();
-        activeSessions.add(sessionToken);
-
-        res.setHeader('Set-Cookie', `admin_session=${sessionToken}; Path=/; HttpOnly; Max-Age=86400; SameSite=Lax`);
+        delete loginFails[ip];
+        const secure = req.secure ? '; Secure' : '';
+        res.setHeader('Set-Cookie', `admin_session=${makeSession()}; Path=/; HttpOnly; Max-Age=86400; SameSite=Lax${secure}`);
         return res.redirect('/admin/dashboard');
     }
+    const f = loginFails[ip] || { count: 0, last: 0 };
+    loginFails[ip] = { count: f.count + 1, last: Date.now() };
     res.send(`<script>alert('Invalid Credentials!'); window.location.href='/admin/login';</script>`);
 });
 
 app.get('/admin/logout', (req, res) => {
-    const sessionToken = req.cookies.admin_session;
-    if (sessionToken) activeSessions.delete(sessionToken);
     res.setHeader('Set-Cookie', 'admin_session=; Path=/; HttpOnly; Max-Age=0');
     res.redirect('/admin/login');
 });
@@ -1282,6 +1364,41 @@ app.post('/admin/broadcast', checkAdminAuth, async (req, res) => {
 });
 
 // ================== MINI APP API ==================
+const teamCache = new Map();
+// registered / active (made a paid deposit) per level + team deposits, for the Team tab and the invite task
+async function getTeamStats(user) {
+    const hit = teamCache.get(user.id);
+    if (hit && Date.now() - hit.time < 15000) return hit.data;
+
+    const idsByLevel = ['level1', 'level2', 'level3'].map(function (l) {
+        return ((user.referrals && user.referrals[l]) || []).map(function (r) { return String(typeof r === 'string' ? r : r.id); });
+    });
+    const allIds = [].concat.apply([], idsByLevel).slice(0, 3000);
+    const info = {};
+    if (allIds.length) {
+        const docs = await User.find({ id: { $in: allIds } }, 'id deposits withdrawals');
+        docs.forEach(function (d) {
+            let dep = 0, hasDep = false, hasWd = false;
+            (d.deposits || []).forEach(function (x) { if (x.status === 'PAID') { hasDep = true; dep += Number(x.usdtAmount) || 0; } });
+            (d.withdrawals || []).forEach(function (x) { if (x.status === 'PAID') hasWd = true; });
+            info[d.id] = { dep: dep, hasDep: hasDep, hasWd: hasWd };
+        });
+    }
+    const out = { registered: [0, 0, 0], active: [0, 0, 0], depositsUsd: 0, firstDeposits: 0, firstWithdrawals: 0 };
+    idsByLevel.forEach(function (ids, i) {
+        ids.forEach(function (id) {
+            out.registered[i]++;
+            const x = info[id];
+            if (!x) return;
+            out.depositsUsd += x.dep;
+            if (x.hasDep) { out.active[i]++; out.firstDeposits++; }
+            if (x.hasWd) out.firstWithdrawals++;
+        });
+    });
+    teamCache.set(user.id, { time: Date.now(), data: out });
+    return out;
+}
+
 app.get('/api/user/:userId', async (req, res) => {
     const userId = String(req.params.userId);
     if (!validId(userId)) return res.status(400).json({ success: false, message: "Invalid user id" });
@@ -1302,7 +1419,7 @@ app.get('/api/user/:userId', async (req, res) => {
     }
 
     const refParam = req.query.ref ? String(req.query.ref).replace(/\D/g, '') : '';
-    if (refParam && refParam !== userId && !user.referredBy) {
+    if (refParam && canAttachReferrer(user) && await referrerIsValid(userId, refParam)) {
         user.referredBy = refParam;
         await user.save();
         await registerReferral(user);
@@ -1337,6 +1454,7 @@ app.get('/api/user/:userId', async (req, res) => {
             : `${w.amount} TRX`
     }));
 
+    data.team = await getTeamStats(user);
     data.pendingUsd = Number(user.accruedUsd || 0) + accrueUsd(user, now);
     data.dailyUsd = dailyUsdRate(user, now);
     data.paidPlan = isPaidPlanActive(user, now);
