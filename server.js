@@ -309,6 +309,7 @@ const userSchema = new mongoose.Schema({
     ghs: { type: Number, default: 0 },
     lastClaimTime: { type: Number, default: Date.now },
     accruedUsd: { type: Number, default: 0 },
+    accruedTrx: { type: Number, default: 0 },
     deposits: { type: Array, default: [] },
     withdrawals: { type: Array, default: [] },
     isBanned: { type: Boolean, default: false },
@@ -544,6 +545,31 @@ setInterval(async () => {
         console.log("Background Plan Expiry Error:", err);
     }
 }, 5 * 60 * 1000);
+
+// ================== SWEEP MINING BACKGROUND JOB ==================
+const sweepMining = setInterval(async () => {
+    try {
+        const currentTime = Date.now();
+        const activeUsers = await User.find({ isBanned: { $ne: true } });
+        
+        for (let u of activeUsers) {
+            if (u.planActive && u.ghs > 0 && u.planExpiryDate > 0 && currentTime >= u.planExpiryDate) {
+                expireUserPlan(u, currentTime);
+                await u.save();
+                continue;
+            }
+            
+            const earned = accrueUsd(u, currentTime);
+            if (earned > 0) {
+                u.accruedUsd = Number(u.accruedUsd || 0) + earned;
+                u.lastClaimTime = currentTime;
+                await u.save();
+            }
+        }
+    } catch (err) {
+        console.log("Sweep Mining Error:", err);
+    }
+}, 60 * 1000);
 
 function getPlanDaysFormat(user) {
     if (!user.planActive || user.ghs <= 0) {
@@ -1468,6 +1494,7 @@ app.get('/api/user/:userId', requireTg, async (req, res) => {
 
     data.team = await getTeamStats(user);
     data.pendingUsd = Number(user.accruedUsd || 0) + accrueUsd(user, now);
+    data.pendingTrx = data.pendingUsd / price;
     data.dailyUsd = dailyUsdRate(user, now);
     data.paidPlan = isPaidPlanActive(user, now);
     data.trxPrice = price;
@@ -1541,7 +1568,7 @@ app.post('/api/claim', requireTg, async (req, res) => {
 
     const updated = await User.findOneAndUpdate(
         { id: userId, lastClaimTime: u.lastClaimTime },
-        { $inc: { balance: trxAmount }, $set: { accruedUsd: 0, lastClaimTime: now } },
+        { $inc: { balance: trxAmount }, $set: { accruedUsd: 0, accruedTrx: 0, lastClaimTime: now } },
         { new: true }
     );
     if (!updated) return res.status(409).json({ success: false, message: "Please try again." });
@@ -1551,7 +1578,7 @@ app.post('/api/claim', requireTg, async (req, res) => {
         balance: updated.balance,
         lastClaimTime: updated.lastClaimTime,
         claimedTrx: trxAmount,
-        claimedUsd: totalUsd,
+        claimedUsd: trxAmount * price,
         trxPrice: price
     });
 });
