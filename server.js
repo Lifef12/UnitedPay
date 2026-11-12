@@ -1459,6 +1459,80 @@ async function getTeamStats(user) {
     return out;
 }
 
+// ================== HISTORY HELPERS (deposit + withdraw, same clean format) ==================
+// time from ids like "dep_1731398400000_ab12" / "wd_1731398400000_ab12" (used for sorting old records)
+function idTime(id) {
+    const m = String(id || '').match(/^(?:dep|wd)_(\d{10,})_/);
+    return m ? Number(m[1]) : 0;
+}
+
+function normDeposit(d) {
+    const sym = d.coinSymbol || parseCoinSymbol(d.coin || 'TRX');
+    const coinAmt = Number(d.coinAmount) > 0
+        ? Number(d.coinAmount)
+        : (parseFloat(String(d.amount || '').replace(/,/g, '')) || 0);
+    const usdt = Number(d.usdtAmount) || 0;
+    const tx = String(d.txHash || '');
+    return Object.assign({}, d, {
+        type: 'deposit',
+        coinSymbol: sym,
+        coinAmount: coinAmt,
+        usdtAmount: usdt,
+        txHash: tx,
+        txShort: tx.length > 10 ? tx.slice(0, 6) + '...' : tx,
+        status: String(d.status || 'PENDING').toUpperCase(),
+        displayText: coinAmt > 0 ? `${fmtCoin(coinAmt, sym)} ${sym}` : `${usdt} USDT`,
+        usdText: `${usdt.toFixed(2)} USDT`,
+        ts: Number(d.ts) || idTime(d.id) || 0
+    });
+}
+
+function normWithdraw(w) {
+    const sym = w.coinSymbol || 'TRX';
+    const trx = parseFloat(w.amount) || 0;
+    const addr = String(w.address || '');
+    return Object.assign({}, w, {
+        type: 'withdraw',
+        coinSymbol: sym,
+        address: addr,
+        addressShort: addr.length > 10 ? addr.slice(0, 6) + '...' : addr,
+        status: String(w.status || 'PENDING').toUpperCase().replace('PEND1NG', 'PENDING'),
+        displayText: Number(w.coinAmount) > 0
+            ? `${fmtCoin(w.coinAmount, sym)} ${sym}`
+            : `${trx.toFixed(2)} TRX`,
+        usdText: `$${Number(w.usdValue || 0).toFixed(2)}`,
+        ts: Number(w.ts) || idTime(w.id) || 0
+    });
+}
+
+// user's saved history + any request still waiting in PendingRequest (so nothing is ever missing)
+async function buildHistory(data, userId) {
+    const deposits = (data.deposits || []).map(normDeposit);
+    const withdrawals = (data.withdrawals || []).map(normWithdraw);
+    try {
+        const pend = await PendingRequest.find({ userId: String(userId) });
+        pend.forEach(p => {
+            if (p.type === 'deposit' && !deposits.some(x => String(x.id) === p.reqId)) {
+                deposits.push(normDeposit({
+                    id: p.reqId, amount: p.amount, coinAmount: p.coinAmount, coinSymbol: p.coinSymbol,
+                    usdtAmount: p.usdtAmount, coin: p.coin, txHash: p.txHash, status: 'PENDING',
+                    date: new Date().toLocaleDateString('en-US')
+                }));
+            }
+            if (p.type === 'withdraw' && !withdrawals.some(x => String(x.id) === p.reqId)) {
+                withdrawals.push(normWithdraw({
+                    id: p.reqId, amount: p.trxAmount, coinAmount: p.coinAmount, coinSymbol: p.coinSymbol,
+                    usdValue: p.usdValue, address: p.address, status: 'PENDING',
+                    date: new Date().toLocaleDateString('en-US')
+                }));
+            }
+        });
+    } catch (e) { console.log('history merge error:', e.message); }
+    deposits.sort((a, b) => b.ts - a.ts);
+    withdrawals.sort((a, b) => b.ts - a.ts);
+    return { deposits, withdrawals };
+}
+
 app.get('/api/user/:userId', requireTg, async (req, res) => {
     const userId = req.tgId;
     let user = await User.findOne({ id: userId });
@@ -1504,16 +1578,10 @@ app.get('/api/user/:userId', requireTg, async (req, res) => {
         }
     });
 
-    data.deposits = (data.deposits || []).map(d => ({
-        ...d,
-        displayText: /[A-Za-z]/.test(String(d.amount || '')) ? String(d.amount) : `${d.usdtAmount || d.amount} USDT`
-    }));
-    data.withdrawals = (data.withdrawals || []).map(w => ({
-        ...w,
-        displayText: Number(w.coinAmount) > 0 && w.coinSymbol
-            ? `${fmtCoin(w.coinAmount, w.coinSymbol)} ${w.coinSymbol}`
-            : `${w.amount} TRX`
-    }));
+    // deposit + withdraw history in the same clean format (includes anything still pending)
+    const hist = await buildHistory(data, userId);
+    data.deposits = hist.deposits;
+    data.withdrawals = hist.withdrawals;
 
     // team stats + total PAID withdrawals of Level 1+2+3 members (TRX and USD)
     const teamBase = await getTeamStats(user);
@@ -1534,6 +1602,14 @@ app.get('/api/user/:userId', requireTg, async (req, res) => {
     data.trxPrice = price;
     data.serverTime = now;
     res.json(data);
+});
+
+// Deposit + withdraw history only (light call for the Wallet / Mining history lists)
+app.get('/api/history/:userId', requireTg, async (req, res) => {
+    const u = await User.findOne({ id: req.tgId });
+    if (!u) return res.json({ success: true, deposits: [], withdrawals: [] });
+    const hist = await buildHistory(u.toObject(), req.tgId);
+    res.json({ success: true, deposits: hist.deposits, withdrawals: hist.withdrawals });
 });
 
 // ===== LIVE QUOTE: same source the server uses for requests (public, no login needed) =====
@@ -1685,7 +1761,8 @@ app.post('/api/deposit', requireTg, async (req, res) => {
         coin: coinRaw,
         txHash: cleanTxHash,
         status: 'PENDING',
-        date: new Date().toLocaleDateString()
+        date: new Date().toLocaleDateString('en-US'),
+        ts: Date.now()
     });
     u.markModified('deposits');
     await u.save();
@@ -1772,7 +1849,8 @@ app.post('/api/withdraw', requireTg, async (req, res) => {
         usdValue: usdValue,
         address: cleanAddress,
         status: 'PENDING',
-        date: new Date().toLocaleDateString()
+        date: new Date().toLocaleDateString('en-US'),
+        ts: Date.now()
     };
 
     // atomic: deduct balance only if enough balance, and add history in the same step
