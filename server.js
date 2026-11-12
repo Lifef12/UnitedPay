@@ -1417,7 +1417,7 @@ app.post('/admin/broadcast', checkAdminAuth, async (req, res) => {
 
 // ================== MINI APP API ==================
 const teamCache = new Map();
-// registered / active (made a paid deposit) per level + team deposits, for the Team tab and the invite task
+// registered / active (made a paid deposit) per level + team deposits + team withdrawals, for the Team tab and the invite task
 async function getTeamStats(user) {
     const hit = teamCache.get(user.id);
     if (hit && Date.now() - hit.time < 15000) return hit.data;
@@ -1430,19 +1430,27 @@ async function getTeamStats(user) {
     if (allIds.length) {
         const docs = await User.find({ id: { $in: allIds } }, 'id deposits withdrawals');
         docs.forEach(function (d) {
-            let dep = 0, hasDep = false, hasWd = false;
+            let dep = 0, hasDep = false, hasWd = false, wdTrx = 0;
             (d.deposits || []).forEach(function (x) { if (x.status === 'PAID') { hasDep = true; dep += Number(x.usdtAmount) || 0; } });
-            (d.withdrawals || []).forEach(function (x) { if (x.status === 'PAID') hasWd = true; });
-            info[d.id] = { dep: dep, hasDep: hasDep, hasWd: hasWd };
+            (d.withdrawals || []).forEach(function (x) {
+                if (x.status === 'PAID') { hasWd = true; wdTrx += parseFloat(x.amount) || 0; }
+            });
+            info[d.id] = { dep: dep, hasDep: hasDep, hasWd: hasWd, wdTrx: wdTrx };
         });
     }
-    const out = { registered: [0, 0, 0], active: [0, 0, 0], depositsUsd: 0, firstDeposits: 0, firstWithdrawals: 0 };
+    const out = {
+        registered: [0, 0, 0], active: [0, 0, 0],
+        depositsUsd: 0, firstDeposits: 0, firstWithdrawals: 0,
+        withdrawalsTrx: 0, withdrawalsTrxByLevel: [0, 0, 0]
+    };
     idsByLevel.forEach(function (ids, i) {
         ids.forEach(function (id) {
             out.registered[i]++;
             const x = info[id];
             if (!x) return;
             out.depositsUsd += x.dep;
+            out.withdrawalsTrx += x.wdTrx;
+            out.withdrawalsTrxByLevel[i] += x.wdTrx;
             if (x.hasDep) { out.active[i]++; out.firstDeposits++; }
             if (x.hasWd) out.firstWithdrawals++;
         });
@@ -1507,7 +1515,12 @@ app.get('/api/user/:userId', requireTg, async (req, res) => {
             : `${w.amount} TRX`
     }));
 
-    data.team = await getTeamStats(user);
+    // team stats + total PAID withdrawals of Level 1+2+3 members (TRX and USD)
+    const teamBase = await getTeamStats(user);
+    data.team = Object.assign({}, teamBase, {
+        totalWithdrawals: teamBase.withdrawalsTrx,                 // TRX
+        withdrawalsUsd: teamBase.withdrawalsTrx * price           // live TRX price se USD
+    });
 
     // ===== LIVE TRX MINING (value in USD in background, shown in TRX) =====
     // pendingTrx   = TRX mined and ready to claim right now (the app counter starts from this number)
